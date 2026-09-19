@@ -60,6 +60,7 @@ function friendlyError(code) {
     case "auth/too-many-requests":
       return "Too many attempts. Try again in a minute.";
     default:
-      return "Sign-in failed. Please try again.";
+      return "Sign-in failed: " + code;
+
   }
 }
