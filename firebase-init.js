@@ -4,12 +4,12 @@
 // > "Your apps" > Web app > SDK setup and configuration
 // ============================================================
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDw4YMuTMXpcab2KEJpyMuBIoW4I6WAy3Y",
+  authDomain: "lsb-rcy-duty-tracker.firebaseapp.com",
+  projectId: "lsb-rcy-duty-tracker",
+  storageBucket: "lsb-rcy-duty-tracker.firebasestorage.app",
+  messagingSenderId: "495623550834",
+  appId: "1:495623550834:web:236e0c745a576ee4598feb"
 };
 
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
