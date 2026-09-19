@@ -78,12 +78,23 @@ function renderClockCard() {
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
+  const errEl = document.getElementById("clockError");
+  errEl.textContent = "";
   btn.disabled = true;
   try {
     if (openRecord) {
       const timeOut = Date.now();
+      const minutesElapsed = (timeOut - openRecord.timeIn) / 60000;
+      const MIN_MINUTES = 60;
+      if (minutesElapsed < MIN_MINUTES) {
+        const remaining = Math.ceil(MIN_MINUTES - minutesElapsed);
+        errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
+        btn.disabled = false;
+        return;
+      }
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
+
     } else {
       const eventId = document.getElementById("eventSelect").value;
       const ev = allEvents.find(e => e.id === eventId);
