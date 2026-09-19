@@ -20,6 +20,9 @@
       <input id="password" type="password" placeholder="Password" autocomplete="current-password">
       <div class="error" id="error"></div>
       <button class="primary" id="loginBtn" style="width:100%;">Sign In</button>
+      <button onclick="fetch('https://firestore.googleapis.com/v1/projects/lsb-rcy-duty-tracker/databases/(default)/documents/users').then(r=>r.text()).then(t=>document.getElementById('rawtest').textContent=t).catch(e=>document.getElementById('rawtest').textContent='FETCH ERROR: '+e.message)" style="margin-top:10px;width:100%;">Test Raw Connection</button>
+<pre id="rawtest" style="white-space:pre-wrap;font-size:11px;color:#9a9ba0;margin-top:10px;"></pre>
+
     </div>
     <p class="muted" style="text-align:center;">Accounts are created by an admin. Contact your committee head if you don't have one yet.</p>
   </div>
