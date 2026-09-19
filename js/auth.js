@@ -42,13 +42,17 @@ async function handleLogin() {
 // Every account's role lives in Firestore at users/{uid}.role
 // ("admin" or "member") — set there when the admin creates the account.
 async function routeByRole(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
-  if (!snap.exists()) {
-    errorEl.textContent = "No profile found for this account. Contact an admin.";
-    return;
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    if (!snap.exists()) {
+      errorEl.textContent = "No profile found for this account. Contact an admin.";
+      return;
+    }
+    const role = snap.data().role;
+    window.location.href = role === "admin" ? "admin.html" : "member.html";
+  } catch (err) {
+    errorEl.textContent = "Firestore error: " + err.code + " | " + err.message;
   }
-  const role = snap.data().role;
-  window.location.href = role === "admin" ? "admin.html" : "member.html";
 }
 
 function friendlyError(code) {
