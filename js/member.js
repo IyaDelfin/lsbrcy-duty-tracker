@@ -103,6 +103,8 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
         studentNo: myProfile.studentNo,
+        fullName: myProfile.fullName || myProfile.username,
+        committee: myProfile.committee || "",
         eventId,
         eventName: ev.name,
         shift: now.getHours() < 12 ? "AM" : "PM",
