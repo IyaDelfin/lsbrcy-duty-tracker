@@ -32,6 +32,7 @@ let allEvents = [];
 let allMembers = [];
 let allRecords = [];
 let activeEventFilter = "all";
+let activeCommitteeFilter = "all";
 
 function initDashboard() {
   onSnapshot(collection(db, "events"), (snap) => {
