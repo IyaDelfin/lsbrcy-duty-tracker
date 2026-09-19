@@ -65,7 +65,11 @@ function renderRecords() {
       </table>
       ${filtered.length === 0 ? `<p class="muted">No duty records for this event yet.</p>` : ""}
     </div>`;
-}
+  
+  document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+    activeCommitteeFilter = btn.dataset.committee;
+    renderRecords();
+  }));
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
