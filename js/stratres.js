@@ -72,9 +72,7 @@ function renderRecords() {
     renderRecords();
   }));
 
-  el.querySelectorAll('[data-action="delete-record"]').forEach(btn => btn.addEventListener("click", async () => {
-    if (confirm("Delete this duty record?")) await deleteDoc(doc(db, "dutyRecords", btn.dataset.id));
-  }));
+
 }
 
 function escapeHtml(str) {
