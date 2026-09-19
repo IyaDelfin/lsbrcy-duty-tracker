@@ -19,7 +19,8 @@ import { initializeFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/
 // Main app instance — used for the currently logged-in session.
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+export const db = initializeFirestore(app, { experimentalForceLongPolling: true });
+
 
 // A SECOND, isolated Firebase app instance.
 // Why: creating a new Auth user with createUserWithEmailAndPassword()
