@@ -49,7 +49,10 @@ async function routeByRole(uid) {
       return;
     }
     const role = snap.data().role;
-    window.location.href = role === "admin" ? "admin.html" : "member.html";
+    if (role === "admin") window.location.href = "admin.html";
+      else if (role === "stratres") window.location.href = "stratres.html";
+    else window.location.href = "member.html";
+
   } catch (err) {
     errorEl.textContent = "Firestore error: " + err.code + " | " + err.message;
   }
