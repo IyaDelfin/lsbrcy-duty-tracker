@@ -21,6 +21,22 @@ let activeCommitteeFilter = "all";
 
 
 // ---------- DUTY RECORDS (tabbed by event, filterable by committee) ----------
+
+function initData() {
+  onSnapshot(collection(db, "events"), (snap) => {
+    allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderEventSubTabs();
+    renderRecords();
+  });
+
+  onSnapshot(collection(db, "dutyRecords"), (snap) => {
+    allRecords = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    renderRecords();
+  });
+}
+
 function renderEventSubTabs() {
   const el = document.getElementById("eventSubTabs");
   const tabs = [{ id: "all", name: "All" }, ...allEvents.map(e => ({ id: e.id, name: e.name }))];
@@ -71,8 +87,6 @@ function renderRecords() {
     activeCommitteeFilter = btn.dataset.committee;
     renderRecords();
   }));
-
-
 }
 
 function escapeHtml(str) {
