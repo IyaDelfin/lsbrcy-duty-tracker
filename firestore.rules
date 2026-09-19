@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ---------------- users ----------------
+    // Every account (admin or member) has a doc here, id = their Auth uid.
+    match /users/{userId} {
+      // Anyone signed in can read their OWN profile (needed at login to
+      // find out their role). Admins can read everyone's.
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Creating a profile: allowed either by an admin (normal path, via
+      // the admin dashboard's "Add Member" form), or by the account
+      // itself right after Firebase Auth creates it (the secondary-app
+      // trick in admin.js signs in as the new user momentarily).
+      allow create: if isAdmin() || request.auth.uid == userId;
+
+      // Only admins edit/delete profiles.
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------------- events ----------------
+    match /events/{eventId} {
+      allow read: if isSignedIn();          // members need to see active events to clock in
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---------------- dutyRecords ----------------
+    match /dutyRecords/{recordId} {
+      // Admins see and manage everything.
+      allow read, update, delete: if isAdmin();
+
+      // Members can read only their own records...
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+
+      // ...create a record only for themselves (clock in)...
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+
+      // ...and update only their OWN record, and only to clock out
+      // (timeOut/hours), never to rewrite who it belongs to.
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.studentNo == resource.data.studentNo
+        && request.resource.data.eventId == resource.data.eventId;
+    }
+  }
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — LSBRCY Duty Tracker</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">❤️</div>
+    <h1>LSBRCY Duty Tracker <span style="color:var(--muted);font-weight:400;">· Admin</span></h1>
+    <div class="spacer"></div>
+    <button class="signout" id="signOutBtn">Sign out</button>
+  </div>
+
+  <div class="container">
+    <div class="tabs" id="mainTabs">
+      <button class="active" data-tab="overview">Overview</button>
+      <button data-tab="events">Events</button>
+      <button data-tab="members">Members</button>
+      <button data-tab="records">Duty Records</button>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div id="tab-overview" class="tabpanel">
+      <div class="row">
+        <div class="card stat"><div class="num" id="statMembers">–</div><div class="label">Active Members</div></div>
+        <div class="card stat"><div class="num" id="statEvents">–</div><div class="label">Events</div></div>
+        <div class="card stat"><div class="num" id="statRecords">–</div><div class="label">Duty Records</div></div>
+      </div>
+    </div>
+
+    <!-- EVENTS -->
+    <div id="tab-events" class="tabpanel" style="display:none;">
+      <div class="card">
+        <h3>Create Event</h3>
+        <input id="evName" placeholder="Event name (e.g. Bloodletting Drive)">
+        <input id="evLocation" placeholder="Location (e.g. SHS Clinic)">
+        <input id="evPic" placeholder="Default PIC / Lead">
+        <input id="evCompliance" placeholder="Compliance rule (e.g. Red Cross Uniform & ID Required)">
+        <button class="primary" id="addEventBtn">+ Add Event</button>
+      </div>
+      <div id="eventsList"></div>
+    </div>
+
+    <!-- MEMBERS -->
+    <div id="tab-members" class="tabpanel" style="display:none;">
+      <div class="card">
+        <h3>Add Member</h3>
+        <input id="mFullName" placeholder="Full Name (e.g. Alvarez Maria C)">
+        <input id="mStudentNo" placeholder="Student No. (e.g. 202330922)">
+        <input id="mCommittee" placeholder="Committee (e.g. Strategic Response)">
+        <input id="mUsername" placeholder="Username (they'll log in with this)">
+        <input id="mPassword" placeholder="Temporary Password" type="text">
+        <select id="mRole">
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+        <div class="error" id="mError"></div>
+        <button class="primary" id="addMemberBtn">+ Create Account</button>
+      </div>
+      <div id="membersList"></div>
+    </div>
+
+    <!-- DUTY RECORDS -->
+    <div id="tab-records" class="tabpanel" style="display:none;">
+      <div class="tabs" id="eventSubTabs"></div>
+      <div id="recordsList"></div>
+    </div>
+  </div>
+
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>

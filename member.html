@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Duty Hours — LSBRCY Duty Tracker</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">❤️</div>
+    <h1>LSBRCY Duty Tracker</h1>
+    <div class="spacer"></div>
+    <button class="signout" id="signOutBtn">Sign out</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2 id="memberName" style="margin-bottom:2px;">–</h2>
+      <p class="muted" id="memberMeta">–</p>
+      <div class="row">
+        <div class="stat"><div class="num" id="totalHours">–</div><div class="label">Total Hours Rendered</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="clockCard">
+      <h3>Clock In / Out</h3>
+      <p class="muted">Select an active event, then clock in when you start and clock out when you finish.</p>
+      <select id="eventSelect"></select>
+      <button class="primary" id="clockBtn" style="width:100%;">Clock In</button>
+    </div>
+
+    <div class="tabs" id="eventSubTabs"></div>
+    <div id="recordsList"></div>
+  </div>
+
+<script type="module" src="js/member.js"></script>
+</body>
+</html>
