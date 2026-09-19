@@ -2,7 +2,7 @@ import { auth, db } from "./firebase-init.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   doc, getDoc, collection, addDoc, updateDoc,
-  onSnapshot, query, where, orderBy
+  onSnapshot, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 let currentUser = null;
@@ -11,6 +11,8 @@ let allEvents = [];
 let myRecords = [];
 let activeEventFilter = "all";
 let openRecord = null; // the duty record currently clocked-in, if any
+
+const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "index.html"; return; }
@@ -30,7 +32,6 @@ onAuthStateChanged(auth, async (user) => {
 document.getElementById("signOutBtn").addEventListener("click", () => signOut(auth));
 
 function initData() {
-  // Only events that are currently active can be clocked into.
   onSnapshot(query(collection(db, "events")), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEventSelect();
@@ -38,13 +39,17 @@ function initData() {
   });
 
   // Security rules restrict this query to the signed-in user's own records.
+  // Sorting is done client-side (no orderBy) to avoid needing a composite index.
   onSnapshot(
-    query(collection(db, "dutyRecords"), where("uid", "==", currentUser.uid), orderBy("createdAt", "desc")),
+    query(collection(db, "dutyRecords"), where("uid", "==", currentUser.uid)),
     (snap) => {
-      myRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      myRecords = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => b.createdAt - a.createdAt);
       openRecord = myRecords.find(r => r.timeOut == null) || null;
       updateTotalHours();
       renderClockCard();
+      renderEventSubTabs();
       renderRecords();
     }
   );
@@ -79,26 +84,26 @@ function renderClockCard() {
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
   const errEl = document.getElementById("clockError");
-  errEl.textContent = "";
+  if (errEl) errEl.textContent = "";
   btn.disabled = true;
   try {
     if (openRecord) {
       const timeOut = Date.now();
       const minutesElapsed = (timeOut - openRecord.timeIn) / 60000;
-      const MIN_MINUTES = 60;
+
       if (minutesElapsed < MIN_MINUTES) {
         const remaining = Math.ceil(MIN_MINUTES - minutesElapsed);
-        errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
+        if (errEl) errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
         btn.disabled = false;
         return;
       }
+
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
-
     } else {
       const eventId = document.getElementById("eventSelect").value;
       const ev = allEvents.find(e => e.id === eventId);
-      if (!ev) return;
+      if (!ev) { btn.disabled = false; return; }
       const now = new Date();
       await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
@@ -143,10 +148,11 @@ function renderRecords() {
     <div class="card">
       <h3>My Duty Logs</h3>
       <table>
-        <tr><th>Event</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
         ${filtered.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
             <td>${escapeHtml(r.shift || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
