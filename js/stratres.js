@@ -50,16 +50,18 @@ function renderRecords() {
   el.innerHTML = `
     <div class="card">
       <table>
-        <tr><th>Student</th><th>Event</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+         <tr><th>Student</th><th>Name</th><th>Committee</th><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th></th></tr>
         ${filtered.map(r => `
           <tr>
             <td>${escapeHtml(r.studentNo || "")}</td>
+            <td>${escapeHtml(r.fullName || "")}</td>
+            <td>${escapeHtml(r.committee || "")}</td>
             <td>${escapeHtml(r.eventName || "")}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
             <td>${escapeHtml(r.shift || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
-            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-          </tr>`).join("")}
+            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>     </tr>`).join("")}
       </table>
       ${filtered.length === 0 ? `<p class="muted">No duty records for this event yet.</p>` : ""}
     </div>`;
