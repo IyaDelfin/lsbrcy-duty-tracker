@@ -4,12 +4,12 @@
 // > "Your apps" > Web app > SDK setup and configuration
 // ============================================================
 export const firebaseConfig = {
-  apiKey: "AIzaSyDw4YMuTMXpcab2KEJpyMuBIoW4I6WAy3Y",
-  authDomain: "lsb-rcy-duty-tracker.firebaseapp.com",
-  projectId: "lsb-rcy-duty-tracker",
-  storageBucket: "lsb-rcy-duty-tracker.firebasestorage.app",
-  messagingSenderId: "495623550834",
-  appId: "1:495623550834:web:236e0c745a576ee4598feb"
+  apiKey: "AIzaSyAm1PiEBJpNT31a6XvLFz_2U8KzAMdugtc",
+  authDomain: "lsb-rcy-duty-tracker-2.firebaseapp.com",
+  projectId: "lsb-rcy-duty-tracker-2",
+  storageBucket: "lsb-rcy-duty-tracker-2.firebasestorage.app",
+  messagingSenderId: "664848454421",
+  appId: "1:664848454421:web:85dd3a8a16b05364e4cf1c"
 };
 
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -20,6 +20,7 @@ import { initializeFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, { experimentalForceLongPolling: true });
+
 
 
 // A SECOND, isolated Firebase app instance.
