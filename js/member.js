@@ -1,9 +1,10 @@
 import { auth, db } from "./firebase-init.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  doc, getDoc, collection, addDoc, updateDoc,
+  doc, getDoc, collection, addDoc, updateDoc, increment,
   onSnapshot, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 
 let currentUser = null;
 let myProfile = null;
@@ -13,6 +14,8 @@ let activeEventFilter = "all";     // for the "My Duty Logs" history tabs
 let activeCategory = "clinic";     // for the "Available Events" tabs
 let selectedEventId = null;        // event chosen from the list, used to clock in
 let openRecord = null;             // the duty record currently clocked-in, if any
+let selectedDate = null;           // chosen day, for multi-day events
+
 
 const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
@@ -60,8 +63,10 @@ function initData() {
       renderClockCard();
       renderEventSubTabs();
       renderRecords();
+      renderEventDetails();
     }
   );
+
 }
 
 function updateTotalHours() {
@@ -85,13 +90,15 @@ function renderCategoryEvents() {
       </div>
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
 
-  listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
+   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     if (openRecord) return; // don't allow switching selection while clocked in
     selectedEventId = card.dataset.eventId;
+    selectedDate = null;
     renderCategoryEvents();
     renderEventDetails();
     renderClockCard();
   }));
+
 
   renderEventDetails();
 }
@@ -99,16 +106,41 @@ function renderCategoryEvents() {
 function renderEventDetails() {
   const el = document.getElementById("eventDetails");
   const ev = allEvents.find(e => e.id === selectedEventId);
-  if (!ev) { el.innerHTML = ""; return; }
+  if (!ev) { el.innerHTML = ""; document.getElementById("dateChoice").innerHTML = ""; return; }
+
+  const slotsLine = ev.maxVolunteers != null
+    ? `<p class="muted">Slots: ${ev.signupCount || 0} / ${ev.maxVolunteers} filled (${Math.max(0, ev.maxVolunteers - (ev.signupCount || 0))} left)</p>`
+    : "";
 
   el.innerHTML = `
     <div class="card" style="margin-top:10px;">
       <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
+      ${ev.startDate ? `<p class="muted">Dates: ${escapeHtml(ev.startDate)}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + escapeHtml(ev.endDate) : ''}</p>` : ""}
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
+      ${slotsLine}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`;
+
+  renderDateChoice(ev);
+}
+
+function renderDateChoice(ev) {
+  const el = document.getElementById("dateChoice");
+  if (!ev.startDate || openRecord) { el.innerHTML = ""; return; }
+
+  if (!selectedDate) selectedDate = ev.startDate;
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px;">
+      <label class="muted" style="display:block;margin-bottom:6px;">Which date are you volunteering?</label>
+      <input type="date" id="shiftDate" min="${ev.startDate}" max="${ev.endDate || ev.startDate}" value="${selectedDate}">
+    </div>`;
+
+  document.getElementById("shiftDate").addEventListener("change", (e) => {
+    selectedDate = e.target.value;
+  });
 }
 
 // ---------- CLOCK IN / OUT ----------
@@ -153,10 +185,17 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
       selectedEventId = null;
-    } else {
+    }     } else {
       if (!selectedEventId) { btn.disabled = false; return; }
       const ev = allEvents.find(e => e.id === selectedEventId);
       if (!ev) { btn.disabled = false; return; }
+
+      if (ev.startDate && !selectedDate) {
+        errEl.textContent = "Pick a date for this event first.";
+        btn.disabled = false;
+        return;
+      }
+
       const now = new Date();
       await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
@@ -166,6 +205,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         eventId: selectedEventId,
         eventName: ev.name,
         shift: now.getHours() < 12 ? "AM" : "PM",
+        date: selectedDate || null,
         timeIn: now.getTime(),
         timeOut: null,
         hours: null,
@@ -173,7 +213,15 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         verified: false,
         createdAt: Date.now()
       });
+
+      // First time signing up for this event? Count a slot (not per shift).
+      const alreadySignedUp = myRecords.some(r => r.eventId === selectedEventId);
+      if (!alreadySignedUp && ev.maxVolunteers != null) {
+        await updateDoc(doc(db, "events", selectedEventId), { signupCount: increment(1) });
+      }
     }
+
+
   } finally {
     btn.disabled = false;
   }
