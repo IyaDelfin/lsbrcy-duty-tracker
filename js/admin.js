@@ -34,6 +34,8 @@ let allRecords = [];
 let activeEventFilter = "all";
 let activeCommitteeFilter = "all";
 
+const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
+
 function initDashboard() {
   onSnapshot(collection(db, "events"), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -65,17 +67,20 @@ function updateStats() {
 document.getElementById("addEventBtn").addEventListener("click", async () => {
   const name = document.getElementById("evName").value.trim();
   const location = document.getElementById("evLocation").value.trim();
+  const category = document.getElementById("evCategory").value;
+  const maxHoursRaw = document.getElementById("evMaxHours").value.trim();
+  const maxHours = maxHoursRaw === "" ? null : parseFloat(maxHoursRaw);
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   if (!name) return;
 
   await addDoc(collection(db, "events"), {
-    name, location, pic, compliance,
+    name, location, category, maxHours, pic, compliance,
     status: "active",
     createdAt: Date.now()
   });
 
-  ["evName","evLocation","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  ["evName","evLocation","evMaxHours","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
 });
 
 function renderEvents() {
@@ -86,6 +91,7 @@ function renderEvents() {
         <div>
           <h3 style="margin-bottom:4px;">${escapeHtml(ev.name)}</h3>
           <p class="muted" style="margin:0 0 6px;">${escapeHtml(ev.location || "")}</p>
+          <span class="badge blue">${escapeHtml(CATEGORY_LABELS[ev.category] || "Uncategorized")}</span>
           <span class="badge ${ev.status === 'active' ? 'green' : 'blue'}">${ev.status}</span>
         </div>
         <div style="text-align:right;">
@@ -96,6 +102,7 @@ function renderEvents() {
         </div>
       </div>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
+      ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events yet.</p>`;
 
@@ -135,7 +142,6 @@ document.getElementById("addMemberBtn").addEventListener("click", async () => {
   btn.disabled = true; btn.textContent = "Creating...";
 
   try {
-    // Use the SECONDARY auth instance so this doesn't sign the admin out.
     const secondaryAuth = getSecondaryAuth();
     const email = usernameToEmail(username);
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
@@ -144,7 +150,7 @@ document.getElementById("addMemberBtn").addEventListener("click", async () => {
       fullName, studentNo, committee, username, role, createdAt: Date.now()
     });
 
-    await signOut(secondaryAuth); // clean up the secondary session
+    await signOut(secondaryAuth);
 
     ["mFullName","mStudentNo","mCommittee","mUsername","mPassword"].forEach(id => document.getElementById(id).value = "");
   } catch (err) {
