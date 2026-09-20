@@ -33,6 +33,10 @@ let allMembers = [];
 let allRecords = [];
 let activeEventFilter = "all";
 let activeCommitteeFilter = "all";
+let activeMemberCommittee = "all";
+let memberSearchTerm = "";
+let selectedMemberId = null;
+
 
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
