@@ -23,12 +23,22 @@
       </div>
     </div>
 
+    <div class="card">
+      <h3>Available Events</h3>
+      <p class="muted">Tap a category, then tap an event to see its details and select it.</p>
+      <div class="tabs" id="categoryTabs">
+        <button data-cat="clinic" class="active">Clinic Duty</button>
+        <button data-cat="office">Office Duty</button>
+      </div>
+      <div id="categoryEventsList"></div>
+      <div id="eventDetails"></div>
+    </div>
+
     <div class="card" id="clockCard">
       <h3>Clock In / Out</h3>
-      <p class="muted">Select an active event, then clock in when you start and clock out when you finish.</p>
-      <select id="eventSelect"></select>
-      <button class="primary" id="clockBtn" style="width:100%;">Clock In</button>
+      <p class="muted" id="selectedEventLabel">Select an event above first.</p>
       <div class="error" id="clockError"></div>
+      <button class="primary" id="clockBtn" style="width:100%;" disabled>Clock In</button>
     </div>
 
     <div class="tabs" id="eventSubTabs"></div>
