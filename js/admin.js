@@ -36,16 +36,28 @@ let activeCommitteeFilter = "all";
 let activeMemberCommittee = "all";
 let memberSearchTerm = "";
 let selectedMemberId = null;
+let activeCategory = "clinic";
+let viewedCategoryEventId = null;
+
+const CATEGORY_LABELS_2 = { clinic: "Clinic Duty", office: "Office Duty" };
+
+document.getElementById("categoryTabs").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  activeCategory = e.target.dataset.cat;
+  document.querySelectorAll("#categoryTabs button").forEach(b => b.classList.toggle("active", b === e.target));
+  renderCategoryEvents();
+});
 
 
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 function initDashboard() {
-  onSnapshot(collection(db, "events"), (snap) => {
+    onSnapshot(collection(db, "events"), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEvents();
     renderEventSubTabs();
     renderRecords();
+    renderCategoryEvents();
   });
 
   onSnapshot(collection(db, "users"), (snap) => {
@@ -68,6 +80,42 @@ function updateStats() {
   document.getElementById("statMembers").textContent = allMembers.filter(m => m.role === "member").length;
   document.getElementById("statEvents").textContent = allEvents.length;
   document.getElementById("statRecords").textContent = allRecords.length;
+}
+
+function renderCategoryEvents() {
+  const listEl = document.getElementById("categoryEventsList");
+  if (!listEl) return;
+  const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
+
+  listEl.innerHTML = active.map(ev => `
+    <div class="card" data-view-ev="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${viewedCategoryEventId === ev.id ? 'border-color:var(--red);' : ''}">
+      <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
+      <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+
+  listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
+    viewedCategoryEventId = card.dataset.viewEv;
+    renderCategoryEvents();
+    renderCategoryEventDetails();
+  }));
+
+  renderCategoryEventDetails();
+}
+
+function renderCategoryEventDetails() {
+  const el = document.getElementById("eventDetails");
+  if (!el) return;
+  const ev = allEvents.find(e => e.id === viewedCategoryEventId);
+  if (!ev) { el.innerHTML = ""; return; }
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px;">
+      <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
+      <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS_2[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
+      ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
+      ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
+      ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+    </div>`;
 }
 
 
