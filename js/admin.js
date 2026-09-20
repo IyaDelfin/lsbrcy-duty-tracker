@@ -124,20 +124,25 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const name = document.getElementById("evName").value.trim();
   const location = document.getElementById("evLocation").value.trim();
   const category = document.getElementById("evCategory").value;
-  const maxHoursRaw = document.getElementById("evMaxHours").value.trim();
+   const maxHoursRaw = document.getElementById("evMaxHours").value.trim();
   const maxHours = maxHoursRaw === "" ? null : parseFloat(maxHoursRaw);
+  const maxVolunteersRaw = document.getElementById("evMaxVolunteers").value.trim();
+  const maxVolunteers = maxVolunteersRaw === "" ? null : parseInt(maxVolunteersRaw, 10);
+  const startDate = document.getElementById("evStartDate").value || null;
+  const endDate = document.getElementById("evEndDate").value || null;
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   if (!name) return;
 
   await addDoc(collection(db, "events"), {
-    name, location, category, maxHours, pic, compliance,
+    name, location, category, maxHours, maxVolunteers, startDate, endDate, pic, compliance,
     status: "active",
+    signupCount: 0,
     createdAt: Date.now()
   });
 
-  ["evName","evLocation","evMaxHours","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-});
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+
 
 function renderEvents() {
   const el = document.getElementById("eventsList");
@@ -157,10 +162,13 @@ function renderEvents() {
           <button class="danger" data-action="delete-event" data-id="${ev.id}">Delete</button>
         </div>
       </div>
+      ${ev.startDate ? `<p class="muted">Dates: ${escapeHtml(ev.startDate)}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + escapeHtml(ev.endDate) : ''}</p>` : ""}
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
+      ${ev.maxVolunteers != null ? `<p class="muted">Slots: ${ev.signupCount || 0} / ${ev.maxVolunteers} filled</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events yet.</p>`;
+
 
   el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
     const newStatus = btn.dataset.status === "active" ? "completed" : "active";
