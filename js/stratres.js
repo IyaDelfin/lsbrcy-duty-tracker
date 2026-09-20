@@ -18,6 +18,14 @@ let allEvents = [];
 let allRecords = [];
 let activeEventFilter = "all";
 let activeCommitteeFilter = "all";
+let memberSearchTerm = "";
+let selectedMemberUid = null;
+
+document.getElementById("memberSearch").addEventListener("input", (e) => {
+  memberSearchTerm = e.target.value.trim().toLowerCase();
+  renderRecords();
+});
+
 
 
 // ---------- DUTY RECORDS (tabbed by event, filterable by committee) ----------
@@ -57,17 +65,26 @@ function renderRecords() {
     `<button data-committee="${escapeHtml(c)}" class="${activeCommitteeFilter === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
   ).join("");
 
-  if (activeCommitteeFilter !== "all") {
+   if (activeCommitteeFilter !== "all") {
     filtered = filtered.filter(r => r.committee === activeCommitteeFilter);
   }
+  if (memberSearchTerm) {
+    filtered = filtered.filter(r =>
+      (r.fullName || "").toLowerCase().includes(memberSearchTerm) ||
+      (r.studentNo || "").toLowerCase().includes(memberSearchTerm)
+    );
+  }
+
+
 
   el.innerHTML = `
     <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
     <div class="card">
       <table>
         <tr><th>Student</th><th>Name</th><th>Committee</th><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th></th></tr>
-        ${filtered.map(r => `
-          <tr>
+                ${filtered.map(r => `
+          <tr data-view-uid="${r.uid || ''}" style="cursor:pointer;">
+
             <td>${escapeHtml(r.studentNo || "")}</td>
             <td>${escapeHtml(r.fullName || "")}</td>
             <td>${escapeHtml(r.committee || "")}</td>
@@ -82,11 +99,58 @@ function renderRecords() {
       ${filtered.length === 0 ? `<p class="muted">No duty records for this filter yet.</p>` : ""}
     </div>`;
 
-  document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+    document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeCommitteeFilter = btn.dataset.committee;
     renderRecords();
   }));
+
+  el.querySelectorAll('tr[data-view-uid]').forEach(row => row.addEventListener("click", () => {
+    if (!row.dataset.viewUid) return;
+    selectedMemberUid = row.dataset.viewUid;
+    renderMemberDetail();
+  }));
+
+  renderMemberDetail();
 }
+
+function renderMemberDetail() {
+  const el = document.getElementById("memberDetail");
+  if (!selectedMemberUid) { el.innerHTML = ""; return; }
+
+  const records = allRecords.filter(r => r.uid === selectedMemberUid);
+  if (records.length === 0) { el.innerHTML = ""; return; }
+
+  const first = records[0];
+  const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h3 style="margin:0;">${escapeHtml(first.fullName || "")}</h3>
+        <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
+      </div>
+      <p class="muted">ID: ${escapeHtml(first.studentNo || "–")} · Committee: ${escapeHtml(first.committee || "–")}</p>
+      <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
+      <table>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+        ${records.map(r => `
+          <tr>
+            <td>${escapeHtml(r.eventName || "")}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
+            <td>${escapeHtml(r.shift || "")}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
+            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
+            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
+          </tr>`).join("")}
+      </table>
+    </div>`;
+
+  document.getElementById("closeMemberDetail").addEventListener("click", () => {
+    selectedMemberUid = null;
+    renderMemberDetail();
+  });
+}
+
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
