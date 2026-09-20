@@ -141,10 +141,11 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
     createdAt: Date.now()
   });
 
-  ["evName","evLocation","evMaxHours","evMaxVolunteers","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-
+   ["evName","evLocation","evMaxHours","evMaxVolunteers","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+});
 
 function renderEvents() {
+
   const el = document.getElementById("eventsList");
   el.innerHTML = allEvents.map(ev => `
     <div class="card">
