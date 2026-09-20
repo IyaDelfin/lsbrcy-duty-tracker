@@ -162,9 +162,13 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
 });
 
 function renderEvents() {
-
   const el = document.getElementById("eventsList");
-  el.innerHTML = allEvents.map(ev => `
+  let visible = allEvents;
+  if (evStatusFilter !== "all") visible = visible.filter(ev => ev.status === evStatusFilter);
+  if (evCategoryFilter !== "all") visible = visible.filter(ev => (ev.category || "clinic") === evCategoryFilter);
+
+  el.innerHTML = visible.map(ev => `
+
     <div class="card">
       <div class="row" style="align-items:center;">
         <div>
