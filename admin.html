@@ -23,25 +23,25 @@
     </div>
 
     <!-- OVERVIEW -->
-    <div id="tab-overview" class="tabpanel">
+        <div id="tab-overview" class="tabpanel">
       <div class="row">
         <div class="card stat"><div class="num" id="statMembers">–</div><div class="label">Active Members</div></div>
         <div class="card stat"><div class="num" id="statEvents">–</div><div class="label">Events</div></div>
         <div class="card stat"><div class="num" id="statRecords">–</div><div class="label">Duty Records</div></div>
       </div>
+
+      <div class="card">
+        <h3>Available Events</h3>
+        <p class="muted">Tap a category, then tap an event to see its details and select it.</p>
+        <div class="tabs" id="categoryTabs">
+          <button data-cat="clinic" class="active">Clinic Duty</button>
+          <button data-cat="office">Office Duty</button>
+        </div>
+        <div id="categoryEventsList"></div>
+        <div id="eventDetails"></div>
+      </div>
     </div>
 
-     <div class="card">
-      <h3>Available Events</h3>
-      <p class="muted">Tap a category, then tap an event to see its details and select it.</p>
-      <div class="tabs" id="categoryTabs">
-        <button data-cat="clinic" class="active">Clinic Duty</button>
-        <button data-cat="office">Office Duty</button>
-      </div>
-      <div id="categoryEventsList"></div>
-      <div id="eventDetails"></div>
-    </div>
-     </div>
 
     <!-- EVENTS -->
     <div id="tab-events" class="tabpanel" style="display:none;">
