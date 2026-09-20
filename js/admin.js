@@ -70,52 +70,6 @@ function updateStats() {
   document.getElementById("statRecords").textContent = allRecords.length;
 }
 
-// ---------- AVAILABLE EVENTS (category tabs + clickable list) ----------
-function initData() {
-  onSnapshot(query(collection(db, "events")), (snap) => {
-    allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCategoryEvents();
-
-function renderCategoryEvents() {
-  const listEl = document.getElementById("categoryEventsList");
-  const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
-
-  listEl.innerHTML = active.map(ev => `
-    <div class="card" data-event-id="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${selectedEventId === ev.id ? 'border-color:var(--red);' : ''}">
-      <div class="row" style="align-items:center;">
-        <div>
-          <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-        </div>
-        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
-      </div>
-    </div>`;
-
-  listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
-    if (openRecord) return; // don't allow switching selection while clocked in
-    selectedEventId = card.dataset.eventId;
-    renderCategoryEvents();
-    renderEventDetails();
-    renderClockCard();
-  }));
-
-  renderEventDetails();
-}
-
-function renderEventDetails() {
-  const el = document.getElementById("eventDetails");
-  const ev = allEvents.find(e => e.id === selectedEventId);
-  if (!ev) { el.innerHTML = ""; return; }
-
-  el.innerHTML = `
-    <div class="card" style="margin-top:10px;">
-      <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
-      <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
-      ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
-      ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
-      ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
-    </div>`;
-}
 
 // ---------- EVENTS ----------
 document.getElementById("addEventBtn").addEventListener("click", async () => {
