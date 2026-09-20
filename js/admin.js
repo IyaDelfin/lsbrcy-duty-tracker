@@ -38,6 +38,23 @@ let memberSearchTerm = "";
 let selectedMemberId = null;
 let activeCategory = "clinic";
 let viewedCategoryEventId = null;
+let evStatusFilter = "active";
+let evCategoryFilter = "all";
+
+document.getElementById("evStatusTabs").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  evStatusFilter = e.target.dataset.status;
+  document.querySelectorAll("#evStatusTabs button").forEach(b => b.classList.toggle("active", b === e.target));
+  renderEvents();
+});
+
+document.getElementById("evCategoryFilterTabs").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  evCategoryFilter = e.target.dataset.cat;
+  document.querySelectorAll("#evCategoryFilterTabs button").forEach(b => b.classList.toggle("active", b === e.target));
+  renderEvents();
+});
+
 
 const CATEGORY_LABELS_2 = { clinic: "Clinic Duty", office: "Office Duty" };
 
