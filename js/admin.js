@@ -118,6 +118,7 @@ function renderCategoryEventDetails() {
     </div>`;
 }
 
+
 // ---------- EVENTS ----------
 document.getElementById("addEventBtn").addEventListener("click", async () => {
   const name = document.getElementById("evName").value.trim();
