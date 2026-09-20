@@ -9,10 +9,13 @@ let currentUser = null;
 let myProfile = null;
 let allEvents = [];
 let myRecords = [];
-let activeEventFilter = "all";
-let openRecord = null; // the duty record currently clocked-in, if any
+let activeEventFilter = "all";     // for the "My Duty Logs" history tabs
+let activeCategory = "clinic";     // for the "Available Events" tabs
+let selectedEventId = null;        // event chosen from the list, used to clock in
+let openRecord = null;             // the duty record currently clocked-in, if any
 
 const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
+const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "index.html"; return; }
@@ -31,11 +34,17 @@ onAuthStateChanged(auth, async (user) => {
 
 document.getElementById("signOutBtn").addEventListener("click", () => signOut(auth));
 
+document.getElementById("categoryTabs").addEventListener("click", (e) => {
+  if (e.target.tagName !== "BUTTON") return;
+  activeCategory = e.target.dataset.cat;
+  document.querySelectorAll("#categoryTabs button").forEach(b => b.classList.toggle("active", b === e.target));
+  renderCategoryEvents();
+});
+
 function initData() {
   onSnapshot(query(collection(db, "events")), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderEventSelect();
-    renderEventSubTabs();
+    renderCategoryEvents();
   });
 
   // Security rules restrict this query to the signed-in user's own records.
@@ -60,31 +69,74 @@ function updateTotalHours() {
   document.getElementById("totalHours").textContent = total.toFixed(1);
 }
 
-// ---------- CLOCK IN / OUT ----------
-function renderEventSelect() {
-  const sel = document.getElementById("eventSelect");
-  const active = allEvents.filter(e => e.status === "active");
-  sel.innerHTML = active.map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("")
-    || `<option disabled>No active events</option>`;
+// ---------- AVAILABLE EVENTS (category tabs + clickable list) ----------
+function renderCategoryEvents() {
+  const listEl = document.getElementById("categoryEventsList");
+  const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
+
+  listEl.innerHTML = active.map(ev => `
+    <div class="card" data-event-id="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${selectedEventId === ev.id ? 'border-color:var(--red);' : ''}">
+      <div class="row" style="align-items:center;">
+        <div>
+          <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
+          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+        </div>
+        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
+      </div>
+    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+
+  listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
+    if (openRecord) return; // don't allow switching selection while clocked in
+    selectedEventId = card.dataset.eventId;
+    renderCategoryEvents();
+    renderEventDetails();
+    renderClockCard();
+  }));
+
+  renderEventDetails();
 }
 
+function renderEventDetails() {
+  const el = document.getElementById("eventDetails");
+  const ev = allEvents.find(e => e.id === selectedEventId);
+  if (!ev) { el.innerHTML = ""; return; }
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px;">
+      <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
+      <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
+      ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
+      ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
+      ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+    </div>`;
+}
+
+// ---------- CLOCK IN / OUT ----------
 function renderClockCard() {
   const btn = document.getElementById("clockBtn");
-  const sel = document.getElementById("eventSelect");
+  const label = document.getElementById("selectedEventLabel");
+
   if (openRecord) {
     const ev = allEvents.find(e => e.id === openRecord.eventId);
     btn.textContent = `Clock Out (${ev ? ev.name : "current shift"})`;
-    sel.disabled = true;
+    btn.disabled = false;
+    label.textContent = `Currently clocked in${ev ? " — " + ev.name : ""}.`;
+  } else if (selectedEventId) {
+    const ev = allEvents.find(e => e.id === selectedEventId);
+    btn.textContent = "Clock In";
+    btn.disabled = false;
+    label.textContent = ev ? `Selected: ${ev.name}` : "Select an event above first.";
   } else {
     btn.textContent = "Clock In";
-    sel.disabled = false;
+    btn.disabled = true;
+    label.textContent = "Select an event above first.";
   }
 }
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
   const errEl = document.getElementById("clockError");
-  if (errEl) errEl.textContent = "";
+  errEl.textContent = "";
   btn.disabled = true;
   try {
     if (openRecord) {
@@ -93,16 +145,17 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
 
       if (minutesElapsed < MIN_MINUTES) {
         const remaining = Math.ceil(MIN_MINUTES - minutesElapsed);
-        if (errEl) errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
+        errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
         btn.disabled = false;
         return;
       }
 
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
+      selectedEventId = null;
     } else {
-      const eventId = document.getElementById("eventSelect").value;
-      const ev = allEvents.find(e => e.id === eventId);
+      if (!selectedEventId) { btn.disabled = false; return; }
+      const ev = allEvents.find(e => e.id === selectedEventId);
       if (!ev) { btn.disabled = false; return; }
       const now = new Date();
       await addDoc(collection(db, "dutyRecords"), {
@@ -110,7 +163,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         studentNo: myProfile.studentNo,
         fullName: myProfile.fullName || myProfile.username,
         committee: myProfile.committee || "",
-        eventId,
+        eventId: selectedEventId,
         eventName: ev.name,
         shift: now.getHours() < 12 ? "AM" : "PM",
         timeIn: now.getTime(),
