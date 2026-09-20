@@ -89,7 +89,7 @@ function renderCategoryEvents() {
         </div>
         ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
       </div>
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+    </div>`;
 
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     if (openRecord) return; // don't allow switching selection while clocked in
