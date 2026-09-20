@@ -79,7 +79,7 @@ function initDashboard() {
 function updateStats() {
   document.getElementById("statMembers").textContent = allMembers.filter(m => m.role === "member").length;
   document.getElementById("statEvents").textContent = allEvents.length;
-  document.getElementById("statRecords").textContent = allRecords.length;
+   document.getElementById("statRecords").textContent = allRecords.length;
 }
 
 function renderCategoryEvents() {
@@ -117,7 +117,6 @@ function renderCategoryEventDetails() {
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`;
 }
-
 
 // ---------- EVENTS ----------
 document.getElementById("addEventBtn").addEventListener("click", async () => {
