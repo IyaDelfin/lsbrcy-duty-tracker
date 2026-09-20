@@ -64,6 +64,16 @@
         <input id="evCompliance" placeholder="Compliance rule (e.g. Red Cross Uniform & ID Required)">
         <button class="primary" id="addEventBtn">+ Add Event</button>
       </div>
+            <div class="tabs" id="evStatusTabs">
+        <button data-status="active" class="active">Active</button>
+        <button data-status="completed">Completed</button>
+        <button data-status="all">All</button>
+      </div>
+      <div class="tabs" id="evCategoryFilterTabs">
+        <button data-cat="all" class="active">All Categories</button>
+        <button data-cat="clinic">Clinic Duty</button>
+        <button data-cat="office">Office Duty</button>
+      </div>
       <div id="eventsList"></div>
     </div>
 
