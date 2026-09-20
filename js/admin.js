@@ -189,7 +189,8 @@ function renderEvents() {
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${ev.maxVolunteers != null ? `<p class="muted">Slots: ${ev.signupCount || 0} / ${ev.maxVolunteers} filled</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
-    </div>`).join("") || `<p class="muted">No events yet.</p>`;
+    </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
+
 
 
   el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
