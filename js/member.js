@@ -196,7 +196,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
       selectedEventId = null;
-    }     } else {
+      } else {
       if (!selectedEventId) { btn.disabled = false; return; }
       const ev = allEvents.find(e => e.id === selectedEventId);
       if (!ev) { btn.disabled = false; return; }
