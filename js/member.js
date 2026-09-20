@@ -1,9 +1,10 @@
 import { auth, db } from "./firebase-init.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  doc, getDoc, collection, addDoc, updateDoc, increment,
+  doc, getDoc, collection, addDoc, updateDoc, increment, arrayUnion,
   onSnapshot, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 
 
 let currentUser = null;
@@ -112,6 +113,14 @@ function renderEventDetails() {
     ? `<p class="muted">Slots: ${ev.signupCount || 0} / ${ev.maxVolunteers} filled (${Math.max(0, ev.maxVolunteers - (ev.signupCount || 0))} left)</p>`
     : "";
 
+  const volunteers = ev.volunteers || [];
+  const volunteersHtml = volunteers.length
+    ? `<div style="margin-top:10px;"><p class="muted" style="margin-bottom:6px;">Who's volunteered (${volunteers.length}):</p>
+        <ul style="margin:0;padding-left:18px;">
+          ${volunteers.map(v => `<li>${escapeHtml(v.fullName || "")}${v.studentNo ? ` <span class="muted">(${escapeHtml(v.studentNo)})</span>` : ""}</li>`).join("")}
+        </ul></div>`
+    : `<p class="muted" style="margin-top:10px;">No one has signed up yet.</p>`;
+
   el.innerHTML = `
     <div class="card" style="margin-top:10px;">
       <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
@@ -121,9 +130,11 @@ function renderEventDetails() {
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
       ${slotsLine}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+      ${volunteersHtml}
     </div>`;
 
   renderDateChoice(ev);
+
 }
 
 function renderDateChoice(ev) {
@@ -214,11 +225,21 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         createdAt: Date.now()
       });
 
-      // First time signing up for this event? Count a slot (not per shift).
+      // First time signing up for this event? Add to the volunteer list, and
+      // count a slot if this event has a max-volunteers cap.
       const alreadySignedUp = myRecords.some(r => r.eventId === selectedEventId);
-      if (!alreadySignedUp && ev.maxVolunteers != null) {
-        await updateDoc(doc(db, "events", selectedEventId), { signupCount: increment(1) });
+      if (!alreadySignedUp) {
+        const updates = {
+          volunteers: arrayUnion({
+            uid: currentUser.uid,
+            fullName: myProfile.fullName || myProfile.username,
+            studentNo: myProfile.studentNo || ""
+          })
+        };
+        if (ev.maxVolunteers != null) updates.signupCount = increment(1);
+        await updateDoc(doc(db, "events", selectedEventId), updates);
       }
+
     }
 
 
