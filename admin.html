@@ -53,8 +53,10 @@
           <option value="clinic">Clinic Duty</option>
           <option value="office">Office Duty</option>
         </select>
-                <input id="evMaxHours" type="number" min="0" step="0.5" placeholder="Max hours for this event (optional)">
+        <input id="evMaxHours" type="number" min="0" step="0.5" placeholder="Max hours for this event (optional)">
         <input id="evMaxVolunteers" type="number" min="0" step="1" placeholder="Max volunteers PER DAY (optional)">
+        <input id="evMaxPerMember" type="number" min="0" step="1" placeholder="Max days one member can reserve for this event (optional)">
+
         <label class="muted" style="display:block;margin-bottom:4px;">Event dates</label>
         <div class="row">
           <input id="evStartDate" type="date">
@@ -62,7 +64,7 @@
         </div>
 
         <input id="evPic" placeholder="Default PIC / Lead">
-        <input id="evCompliance" placeholder="Compliance rule (e.g. Red Cross Uniform & ID Required)">
+        <input id="evCompliance" placeholder="Compliance rule/Note/Time of Event (e.g. Red Cross Uniform & ID Required)">
                <button class="primary" id="addEventBtn">+ Add Event</button>
       </div>
       <div class="tabs" id="evStatusTabs">
