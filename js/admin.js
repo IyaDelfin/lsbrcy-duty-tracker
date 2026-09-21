@@ -187,7 +187,7 @@ function renderEvents() {
       ${ev.startDate ? `<p class="muted">Dates: ${escapeHtml(ev.startDate)}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + escapeHtml(ev.endDate) : ''}</p>` : ""}
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
-      ${ev.maxVolunteers != null ? `<p class="muted">Slots: ${ev.signupCount || 0} / ${ev.maxVolunteers} filled</p>` : ""}
+      ${ev.maxVolunteers != null ? `<p class="muted">Max per day: ${ev.maxVolunteers}${ev.volunteersByDate ? ' · Total reservations: ' + Object.values(ev.volunteersByDate).reduce((s,a)=>s+a.length,0) : ''}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
 
