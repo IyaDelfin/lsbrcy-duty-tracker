@@ -145,10 +145,13 @@ function renderEventDetails() {
   const volunteersByDate = ev.volunteersByDate || {};
   const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
 
-  const datesHtml = dates.map(date => {
+    const myReservedCount = dates.filter(d => (volunteersByDate[d] || []).some(v => v.uid === currentUser.uid)).length;
+    const atPersonalLimit = ev.maxPerMember != null && myReservedCount >= ev.maxPerMember;
+    const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
     const full = ev.maxVolunteers != null && list.length >= ev.maxVolunteers;
     const alreadyReserved = list.some(v => v.uid === currentUser.uid);
+
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
     const namesHtml = list.length
@@ -163,6 +166,8 @@ function renderEventDetails() {
         </div>`;
     } else if (full) {
       actionHtml = `<span class="badge red">Full</span>`;
+    } else if (atPersonalLimit) {
+      actionHtml = `<span class="badge blue">Limit reached</span>`;
     } else {
       actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
     }
@@ -187,9 +192,11 @@ function renderEventDetails() {
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
+      ${ev.maxPerMember != null ? `<p class="muted">You can reserve up to ${ev.maxPerMember} day(s) for this event (reserved so far: ${myReservedCount})</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
+
 
     el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => reserveDate(ev, btn.dataset.reserveDate)));
 
