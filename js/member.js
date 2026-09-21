@@ -1,11 +1,9 @@
 import { auth, db } from "./firebase-init.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  doc, getDoc, collection, addDoc, updateDoc, increment, arrayUnion,
+  doc, getDoc, collection, addDoc, updateDoc,
   onSnapshot, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-
 
 let currentUser = null;
 let myProfile = null;
@@ -15,8 +13,6 @@ let activeEventFilter = "all";     // for the "My Duty Logs" history tabs
 let activeCategory = "clinic";     // for the "Available Events" tabs
 let selectedEventId = null;        // event chosen from the list, used to clock in
 let openRecord = null;             // the duty record currently clocked-in, if any
-
-
 
 const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
@@ -46,10 +42,9 @@ document.getElementById("categoryTabs").addEventListener("click", (e) => {
 });
 
 function initData() {
-    onSnapshot(query(collection(db, "events")), (snap) => {
+  onSnapshot(query(collection(db, "events")), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCategoryEvents();
-    renderClockCard();
   });
 
   // Security rules restrict this query to the signed-in user's own records.
@@ -65,10 +60,8 @@ function initData() {
       renderClockCard();
       renderEventSubTabs();
       renderRecords();
-      renderEventDetails();
     }
   );
-
 }
 
 function updateTotalHours() {
@@ -92,85 +85,21 @@ function renderCategoryEvents() {
       </div>
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
 
-    listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
+  listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
+    if (openRecord) return; // don't allow switching selection while clocked in
     selectedEventId = card.dataset.eventId;
     renderCategoryEvents();
     renderEventDetails();
+    renderClockCard();
   }));
 
-
-
-
-  function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-function dateRange(start, end) {
-  const dates = [];
-  let cur = new Date(start + "T00:00:00");
-  const last = new Date((end || start) + "T00:00:00");
-  while (cur <= last) {
-    dates.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
-    cur.setDate(cur.getDate() + 1);
-  }
-  return dates;
-}
-
-function findTodaysReservation() {
-  const today = todayStr();
-  for (const ev of allEvents) {
-    const list = (ev.volunteersByDate || {})[today] || [];
-    if (list.some(v => v.uid === currentUser.uid)) return { event: ev, date: today };
-  }
-  return null;
-}
-
-async function reserveDate(ev, date) {
-  await updateDoc(doc(db, "events", ev.id), {
-    [`volunteersByDate.${date}`]: arrayUnion({
-      uid: currentUser.uid,
-      fullName: myProfile.fullName || myProfile.username,
-      studentNo: myProfile.studentNo || ""
-    })
-  });
+  renderEventDetails();
 }
 
 function renderEventDetails() {
   const el = document.getElementById("eventDetails");
   const ev = allEvents.find(e => e.id === selectedEventId);
   if (!ev) { el.innerHTML = ""; return; }
-
-  const volunteersByDate = ev.volunteersByDate || {};
-  const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
-
-  const datesHtml = dates.map(date => {
-    const list = volunteersByDate[date] || [];
-    const full = ev.maxVolunteers != null && list.length >= ev.maxVolunteers;
-    const alreadyReserved = list.some(v => v.uid === currentUser.uid);
-    const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
-
-    const namesHtml = list.length
-      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
-      : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
-
-    let actionHtml;
-    if (alreadyReserved) actionHtml = `<span class="badge green">Reserved</span>`;
-    else if (full) actionHtml = `<span class="badge red">Full</span>`;
-    else actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
-
-    return `
-      <div class="card" style="margin-bottom:8px;">
-        <div class="row" style="align-items:center;">
-          <div>
-            <strong>${dateLabel}</strong>
-            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
-          </div>
-          ${actionHtml}
-        </div>
-        ${namesHtml}
-      </div>`;
-  }).join("");
 
   el.innerHTML = `
     <div class="card" style="margin-top:10px;">
@@ -179,10 +108,7 @@ function renderEventDetails() {
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
-    </div>
-    ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
-
-  el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => reserveDate(ev, btn.dataset.reserveDate)));
+    </div>`;
 }
 
 // ---------- CLOCK IN / OUT ----------
@@ -195,21 +121,17 @@ function renderClockCard() {
     btn.textContent = `Clock Out (${ev ? ev.name : "current shift"})`;
     btn.disabled = false;
     label.textContent = `Currently clocked in${ev ? " — " + ev.name : ""}.`;
-    return;
-  }
-
-  const reservation = findTodaysReservation();
-  if (reservation) {
-    btn.textContent = `Clock In (${reservation.event.name})`;
+  } else if (selectedEventId) {
+    const ev = allEvents.find(e => e.id === selectedEventId);
+    btn.textContent = "Clock In";
     btn.disabled = false;
-    label.textContent = `Today's reserved shift: ${reservation.event.name}`;
+    label.textContent = ev ? `Selected: ${ev.name}` : "Select an event above first.";
   } else {
     btn.textContent = "Clock In";
     btn.disabled = true;
-    label.textContent = "Reserve a slot for today's date on an event above, then come back here.";
+    label.textContent = "Select an event above first.";
   }
 }
-
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
@@ -230,20 +152,20 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
 
       const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
       await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
-      else {
-      const reservation = findTodaysReservation();
-      if (!reservation) { btn.disabled = false; return; }
-      const ev = reservation.event;
+      selectedEventId = null;
+    } else {
+      if (!selectedEventId) { btn.disabled = false; return; }
+      const ev = allEvents.find(e => e.id === selectedEventId);
+      if (!ev) { btn.disabled = false; return; }
       const now = new Date();
       await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
         studentNo: myProfile.studentNo,
         fullName: myProfile.fullName || myProfile.username,
         committee: myProfile.committee || "",
-        eventId: ev.id,
+        eventId: selectedEventId,
         eventName: ev.name,
         shift: now.getHours() < 12 ? "AM" : "PM",
-        date: reservation.date,
         timeIn: now.getTime(),
         timeOut: null,
         hours: null,
@@ -252,31 +174,10 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         createdAt: Date.now()
       });
     }
-
-    
-      // First time signing up for this event? Add to the volunteer list, and
-      // count a slot if this event has a max-volunteers cap.
-      const alreadySignedUp = myRecords.some(r => r.eventId === selectedEventId);
-      if (!alreadySignedUp) {
-        const updates = {
-          volunteers: arrayUnion({
-            uid: currentUser.uid,
-            fullName: myProfile.fullName || myProfile.username,
-            studentNo: myProfile.studentNo || ""
-          })
-        };
-        if (ev.maxVolunteers != null) updates.signupCount = increment(1);
-        await updateDoc(doc(db, "events", selectedEventId), updates);
-      }
-
-    }
-
-
   } finally {
     btn.disabled = false;
   }
 });
-
 
 // ---------- HISTORY BY EVENT TAB ----------
 function renderEventSubTabs() {
