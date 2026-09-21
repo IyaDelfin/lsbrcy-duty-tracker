@@ -101,21 +101,25 @@ function updateStats() {
 
 function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
-  if (!listEl) return;
   const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
 
   listEl.innerHTML = active.map(ev => `
-    <div class="card" data-view-ev="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${viewedCategoryEventId === ev.id ? 'border-color:var(--red);' : ''}">
-      <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-      <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+    <div class="card" data-event-id="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${selectedEventId === ev.id ? 'border-color:var(--red);' : ''}">
+      <div class="row" style="align-items:center;">
+        <div>
+          <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
+          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+        </div>
+        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
+      </div>
+    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
 
-  listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
-    viewedCategoryEventId = card.dataset.viewEv;
+  listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
+    selectedEventId = card.dataset.eventId;
     renderCategoryEvents();
-    renderCategoryEventDetails();
+    renderEventDetails();
   }));
-
+}
   renderCategoryEventDetails();
 }
 
