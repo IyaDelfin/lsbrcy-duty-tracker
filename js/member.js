@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-init.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  doc, getDoc, collection, addDoc, updateDoc, arrayUnion,
+  doc, getDoc, collection, addDoc, updateDoc, arrayUnion, arrayRemove,
   onSnapshot, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -130,6 +130,12 @@ async function reserveDate(ev, date) {
   });
 }
 
+async function cancelReservation(ev, date, entry) {
+  await updateDoc(doc(db, "events", ev.id), {
+    [`volunteersByDate.${date}`]: arrayRemove(entry)
+  });
+}
+
 // ---------- EVENT DETAILS (per-date reserve cards) ----------
 function renderEventDetails() {
   const el = document.getElementById("eventDetails");
@@ -150,9 +156,17 @@ function renderEventDetails() {
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
 
     let actionHtml;
-    if (alreadyReserved) actionHtml = `<span class="badge green">Reserved</span>`;
-    else if (full) actionHtml = `<span class="badge red">Full</span>`;
-    else actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
+    if (alreadyReserved) {
+      actionHtml = `<div style="text-align:right;">
+          <span class="badge green">Reserved</span><br>
+          <button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>
+        </div>`;
+    } else if (full) {
+      actionHtml = `<span class="badge red">Full</span>`;
+    } else {
+      actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
+    }
+
 
     return `
       <div class="card" style="margin-bottom:8px;">
@@ -177,7 +191,15 @@ function renderEventDetails() {
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
-  el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => reserveDate(ev, btn.dataset.reserveDate)));
+    el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => reserveDate(ev, btn.dataset.reserveDate)));
+
+  el.querySelectorAll('[data-cancel-date]').forEach(btn => btn.addEventListener("click", () => {
+    const date = btn.dataset.cancelDate;
+    const list = (ev.volunteersByDate || {})[date] || [];
+    const entry = list.find(v => v.uid === currentUser.uid);
+    if (entry) cancelReservation(ev, date, entry);
+  }));
+
 }
 
 // ---------- CLOCK IN / OUT ----------
