@@ -251,7 +251,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       if (!reservation) { btn.disabled = false; return; }
       const ev = reservation.event;
       const now = new Date();
-      await addDoc(collection(db, "dutyRecords"), {
+            await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
         studentNo: myProfile.studentNo,
         fullName: myProfile.fullName || myProfile.username,
@@ -268,10 +268,13 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         createdAt: Date.now()
       });
     }
+  } catch (err) {
+    errEl.textContent = "Clock in/out failed: " + (err.code || err.message);
   } finally {
     btn.disabled = false;
   }
 });
+
 
 // ---------- HISTORY BY EVENT TAB ----------
 function renderEventSubTabs() {
