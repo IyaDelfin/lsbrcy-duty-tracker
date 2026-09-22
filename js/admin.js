@@ -375,7 +375,7 @@ function renderMemberDetail() {
     <div class="card event-detail-card" style="margin-top:5px;">
       <p class="eyebrow">Member Details</p>
       <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
-        <button class="secondary" id="closeMemberDetail" style="max-width:50px;">Close</button>
+        <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
       </div>
       <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
