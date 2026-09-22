@@ -14,10 +14,10 @@ let activeCategory = "clinic";     // for the "Available Events" tabs
 let selectedEventId = null;        // event chosen from the list, to view details
 let openRecord = null;             // the duty record currently clocked-in, if any
 
-const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
 const EARLY_CLOCKIN_MINUTES = 30; // members can clock in this many minutes before their selected start time
 const LATE_GRACE_MINUTES = 5;     // grace period after selected start time before a clock-in counts as "Late"
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
+
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "index.html"; return; }
@@ -124,6 +124,17 @@ function findTodaysReservation() {
   return null;
 }
 
+// How many dates this member has already reserved on this event (all dates, not just today).
+function memberReservationCountForEvent(ev) {
+  const volunteersByDate = ev.volunteersByDate || {};
+  let count = 0;
+  for (const date in volunteersByDate) {
+    if ((volunteersByDate[date] || []).some(v => v.uid === currentUser.uid)) count++;
+  }
+  return count;
+}
+
+
 // Builds a JS Date for a "YYYY-MM-DD" date + "HH:MM" 24-hour time.
 function combineDateTime(dateStr, hhmm) {
   return new Date(`${dateStr}T${hhmm}:00`);
@@ -181,12 +192,15 @@ function renderEventDetails() {
   const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
   const timeOptions = timeOptionsForEvent(ev);
   const hasTimeRange = timeOptions.length > 1;
+  const myReservationCount = memberReservationCountForEvent(ev);
+  const atMemberLimit = ev.maxPerMember != null && myReservationCount >= ev.maxPerMember;
 
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
     const full = ev.maxVolunteers != null && list.length >= ev.maxVolunteers;
     const myEntry = list.find(v => v.uid === currentUser.uid);
     const alreadyReserved = !!myEntry;
+    const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
     const namesHtml = list.length
@@ -197,15 +211,19 @@ function renderEventDetails() {
     if (alreadyReserved) {
       actionHtml = `<div style="text-align:right;">
           <span class="badge green">Reserved${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}</span><br>
-          <button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>
+          ${isActiveShift
+            ? `<p class="muted" style="margin:4px 0 0;font-size:.7rem;">Currently on duty</p>`
+            : `<button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>`}
         </div>`;
     } else if (full) {
       actionHtml = `<span class="badge red">Full</span>`;
+    } else if (atMemberLimit) {
+      actionHtml = `<span class="badge red">Limit Reached</span>`;
     } else {
       actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
     }
 
-    const timePickerHtml = (!alreadyReserved && !full && hasTimeRange) ? `
+    const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && hasTimeRange) ? `
         <div class="row" style="margin-top:8px;">
           <select data-start-time="${date}">
             ${timeOptions.slice(0, -1).map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
@@ -229,7 +247,7 @@ function renderEventDetails() {
       </div>`;
   }).join("");
 
-     el.innerHTML = `
+  el.innerHTML = `
     <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:10px;">
       <p class="eyebrow">Event Details</p>
@@ -238,10 +256,10 @@ function renderEventDetails() {
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
       ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
+      ${ev.maxPerMember != null ? `<p class="muted">Your reservations for this event: <strong style="color:${atMemberLimit ? 'var(--red)' : 'var(--text)'};">${myReservationCount} / ${ev.maxPerMember}</strong></p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
-  
 
   el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.reserveDate;
@@ -256,7 +274,6 @@ function renderEventDetails() {
     reserveDate(ev, date, startTime, endTime);
   }));
 
-  
   el.querySelectorAll('[data-cancel-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.cancelDate;
     const list = (ev.volunteersByDate || {})[date] || [];
@@ -264,7 +281,6 @@ function renderEventDetails() {
     if (entry) cancelReservation(ev, date, entry);
   }));
 }
-
 // ---------- CLOCK IN / OUT ----------
 function renderClockCard() {
   const btn = document.getElementById("clockBtn");
@@ -321,17 +337,34 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
   try {
     if (openRecord) {
       const timeOut = Date.now();
-      const minutesElapsed = (timeOut - openRecord.timeIn) / 60000;
+      const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
 
-      if (minutesElapsed < MIN_MINUTES) {
-        const remaining = Math.ceil(MIN_MINUTES - minutesElapsed);
-        errEl.textContent = `You can clock out in about ${remaining} more minute(s). Minimum shift is ${MIN_MINUTES} minutes.`;
-        btn.disabled = false;
-        return;
+      let earlyOut = false;
+      let confirmMsg = "Confirm clock out.";
+      if (openRecord.shiftEnd) {
+        const scheduledEnd = combineDateTime(openRecord.date, openRecord.shiftEnd);
+        if (timeOut < scheduledEnd.getTime()) {
+          earlyOut = true;
+          const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
+          const hrs = Math.floor(remainingMins / 60);
+          const mins = remainingMins % 60;
+          const remainingLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+          confirmMsg = `Confirm clock out? You still have ${remainingLabel} left.`;
+        }
       }
 
-      const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
-      await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours });
+      if (!confirm(confirmMsg)) { btn.disabled = false; return; }
+
+      await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours, earlyOut });
+
+      if (earlyOut) {
+        const ev = allEvents.find(e => e.id === openRecord.eventId);
+        if (ev) {
+          const list = (ev.volunteersByDate || {})[openRecord.date] || [];
+          const entry = list.find(v => v.uid === currentUser.uid);
+          if (entry) await cancelReservation(ev, openRecord.date, entry);
+        }
+      }
     } else {
       const reservation = findTodaysReservation();
       if (!reservation) { btn.disabled = false; return; }
@@ -369,6 +402,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         pic: ev.pic || "",
         verified: false,
         late,
+        earlyOut: false,
         createdAt: Date.now()
       });
     }
@@ -401,7 +435,10 @@ function renderRecords() {
   el.innerHTML = `
     <div class="card">
       <h3>My Duty Logs</h3>
-      <p class="muted">Late Count: <strong style="color:var(--orange);">${myRecords.filter(r => r.late).length}</strong></p>
+      <div class="row">
+        <p class="muted">Late Count: <strong style="color:var(--orange);">${myRecords.filter(r => r.late).length}</strong></p>
+        <p class="muted">Early Out Count: <strong style="color:var(--blue);">${myRecords.filter(r => r.earlyOut).length}</strong></p>
+      </div>
       <table>
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
         ${filtered.map(r => `
@@ -412,13 +449,12 @@ function renderRecords() {
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
+            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
           </tr>`).join("")}
       </table>
       ${filtered.length === 0 ? `<p class="muted">No duty logs yet.</p>` : ""}
     </div>`;
 }
-
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
