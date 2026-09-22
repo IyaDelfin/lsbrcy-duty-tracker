@@ -69,6 +69,14 @@ body {
   background: var(--card-2);
   border-left: 4px solid var(--red);
 }
+.section-divider {
+  height: 2px;
+  background: var(--red);
+  border: none;
+  border-radius: 2px;
+  margin: 24px 0 4px;
+  opacity: .7;
+}}
 .eyebrow {
   text-transform: uppercase;
   font-size: .7rem;
