@@ -409,4 +409,19 @@ function renderRecords() {
   }));
 }
 
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+// Formats a 24-hour "HH:MM" string as "H:MM AM/PM", using "NN" for noon
+// and "MN" for midnight (Philippine duty-roster convention).
+function formatTime12(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const mm = String(m).padStart(2, "0");
+  if (h === 0) return `12:${mm} MN`;
+  if (h === 12) return `12:${mm} NN`;
+  if (h < 12) return `${h}:${mm} AM`;
+  return `${h - 12}:${mm} PM`;
+}
 
