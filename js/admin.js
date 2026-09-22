@@ -372,8 +372,8 @@ function renderMemberDetail() {
 
   el.innerHTML = `
     <hr class="section-divider">
-    <div class="card event-detail-card" style="margin-top:10px;">
-      <p class="eyebrow">Event Details</p>
+    <div class="card event-detail-card" style="margin-top:5px;">
+      <p class="eyebrow">Member Details</p>
       <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
         <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
       </div>
