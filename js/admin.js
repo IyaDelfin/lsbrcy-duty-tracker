@@ -106,12 +106,14 @@ function renderCategoryEvents() {
   if (!listEl) return;
   const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
 
-  listEl.innerHTML = active.map(ev => `
-    <div class="card" data-view-ev="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${viewedCategoryEventId === ev.id ? 'border-color:var(--red);' : ''}">
+    listEl.innerHTML = active.map(ev => `
+    <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+      ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
 
+  
   listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
     viewedCategoryEventId = card.dataset.viewEv;
     renderCategoryEvents();
@@ -128,15 +130,16 @@ function renderCategoryEventDetails() {
   if (!ev) { el.innerHTML = ""; return; }
 
   el.innerHTML = `
-    <div class="card" style="margin-top:10px;">
+    <div class="card event-detail-card" style="margin-top:10px;">
+      <p class="eyebrow">Event Details</p>
       <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS_2[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
+      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`;
 }
-
 
 // ---------- EVENTS ----------
 document.getElementById("addEventBtn").addEventListener("click", async () => {
