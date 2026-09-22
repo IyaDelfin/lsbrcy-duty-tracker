@@ -370,13 +370,14 @@ function renderMemberDetail() {
   const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
   const eventOptionsHtml = allEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)}</option>`).join("");
 
+  
   el.innerHTML = `
     <hr class="section-divider">
-    <div class="card event-detail-card" style="margin-top:5px;">
+    <div class="card event-detail-card" style="margin-top:5px; position: relative;">
+      <button class="secondary" id="closeMemberDetail" style="position: absolute; top: 16px; right: 16px; width: auto;">Close</button>
       <p class="eyebrow">Member Details</p>
       <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
-        <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
-      </div>
+    </div>
       <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
       <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
