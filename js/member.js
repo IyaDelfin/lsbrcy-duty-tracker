@@ -229,7 +229,8 @@ function renderEventDetails() {
       </div>`;
   }).join("");
 
-    el.innerHTML = `
+     el.innerHTML = `
+    <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:10px;">
       <p class="eyebrow">Event Details</p>
       <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
