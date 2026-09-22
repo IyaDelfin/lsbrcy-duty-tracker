@@ -371,9 +371,10 @@ function renderMemberDetail() {
   const eventOptionsHtml = allEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)}</option>`).join("");
 
   el.innerHTML = `
-    <div class="card">
-      <div class="row" style="align-items:center;">
-        <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
+    <hr class="section-divider">
+    <div class="card event-detail-card" style="margin-top:10px;">
+      <p class="eyebrow">Event Details</p>
+      <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
         <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
       </div>
       <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
