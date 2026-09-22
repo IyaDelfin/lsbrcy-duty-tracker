@@ -75,25 +75,7 @@ function renderRecords() {
     );
   }
 
-
-
   el.innerHTML = `
-    <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
-    <div class="card">
-      <table>
-        <tr><th>Student</th><th>Name</th><th>Committee</th><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th></th></tr>
-                ${filtered.map(r => `
-          <tr data-view-uid="${r.uid || ''}" style="cursor:pointer;">
-
-            <td>${escapeHtml(r.studentNo || "")}</td>
-            <td>${escapeHtml(r.fullName || "")}</td>
-            <td>${escapeHtml(r.committee || "")}</td>
-            <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
-            <td>${escapeHtml(r.shift || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
-   el.innerHTML = `
     <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
     <div class="card">
       <table>
@@ -116,7 +98,6 @@ function renderRecords() {
       ${filtered.length === 0 ? `<p class="muted">No duty records for this filter yet.</p>` : ""}
     </div>`;
 
-  
     document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeCommitteeFilter = btn.dataset.committee;
     renderRecords();
