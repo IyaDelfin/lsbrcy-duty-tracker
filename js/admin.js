@@ -397,7 +397,7 @@ function renderMemberDetail() {
           </tr>`).join("")}
       </table>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
-
+      <hr class="section-divider">
       <h3 style="margin:16px 0 8px;">+ Add Duty Record</h3>
       <p class="muted">Manually log a duty entry for this member (e.g. paper logs or make-up duty).</p>
       <select id="manualRecordEvent">${eventOptionsHtml || `<option value="">No events yet</option>`}</select>
