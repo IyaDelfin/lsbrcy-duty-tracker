@@ -149,20 +149,21 @@ function renderMemberDetail() {
       </div>
       <p class="muted">ID: ${escapeHtml(first.studentNo || "–")} · Committee: ${escapeHtml(first.committee || "–")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
+      <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
       <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
         ${records.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
-            <td>${escapeHtml(r.shift || "")}</td>
+            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
+            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
           </tr>`).join("")}
       </table>
     </div>`;
-
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberUid = null;
     renderMemberDetail();
@@ -172,4 +173,16 @@ function renderMemberDetail() {
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+// Formats a 24-hour "HH:MM" string as "H:MM AM/PM", using "NN" for noon
+// and "MN" for midnight (Philippine duty-roster convention).
+function formatTime12(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const mm = String(m).padStart(2, "0");
+  if (h === 0) return `12:${mm} MN`;
+  if (h === 12) return `12:${mm} NN`;
+  if (h < 12) return `${h}:${mm} AM`;
+  return `${h - 12}:${mm} PM`;
 }
