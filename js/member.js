@@ -342,56 +342,37 @@ function renderClockCard() {
   const btn = document.getElementById("clockBtn");
   const label = document.getElementById("selectedEventLabel");
 
-    if (openRecord) {
-      // Snapshot everything we need from openRecord *before* the write below —
-      // the onSnapshot listener can flip the module-level `openRecord` to null
-      // the instant the record's timeOut is saved, so referencing openRecord
-      // again after the await is unreliable.
-      const recordId = openRecord.id;
-      const eventId = openRecord.eventId;
-      const recordDate = openRecord.date;
-      const shiftEnd = openRecord.shiftEnd;
-      const timeIn = openRecord.timeIn;
-
-      const timeOut = Date.now();
-      const hours = +((timeOut - timeIn) / 3600000).toFixed(2);
-
-      let earlyOut = false;
-      let confirmMsg = "Confirm clock out.";
-      if (shiftEnd) {
-        const scheduledEnd = combineDateTime(recordDate, shiftEnd);
-        if (timeOut < scheduledEnd.getTime()) {
-          earlyOut = true;
-          const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
-          const hrs = Math.floor(remainingMins / 60);
-          const mins = remainingMins % 60;
-          const remainingLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-          confirmMsg = `Confirm clock out? You still have ${remainingLabel} left.`;
-        }
-      }
-
-      if (!confirm(confirmMsg)) { btn.disabled = false; return; }
-
-      await updateDoc(doc(db, "dutyRecords", recordId), { timeOut, hours, earlyOut });
-
-      if (earlyOut) {
-        const ev = allEvents.find(e => e.id === eventId);
-        if (ev) {
-          const list = (ev.volunteersByDate || {})[recordDate] || [];
-          const entry = list.find(v => v.uid === currentUser.uid);
-          if (entry) await cancelReservation(ev, recordDate, entry);
-        }
-      }
-    } else {
-    btn.textContent = `Clock In (${reservation.event.name})`;
+  if (openRecord) {
+    const ev = allEvents.find(e => e.id === openRecord.eventId);
+    btn.textContent = `Clock Out (${ev ? ev.name : openRecord.eventName || ""})`;
     btn.disabled = false;
-    label.textContent = `Today's reserved shift: ${reservation.event.name}`;
+    label.textContent = `Clocked in since ${new Date(openRecord.timeIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+    return;
   }
-}
 
-// Re-check every 30s so the button enables itself once a member crosses
-// into their 30-minutes-early window, without needing a page refresh.
-setInterval(renderClockCard, 30000);
+  const reservation = findTodaysReservation();
+  if (!reservation) {
+    btn.textContent = "Clock In";
+    btn.disabled = true;
+    label.textContent = "Select an event above first.";
+    return;
+  }
+
+  if (reservation.startTime) {
+    const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
+    const earliestClockIn = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
+    if (new Date() < earliestClockIn) {
+      btn.textContent = `Clock In (${reservation.event.name})`;
+      btn.disabled = true;
+      label.textContent = `Today's reserved shift: ${reservation.event.name} · opens at ${earliestClockIn.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+      return;
+    }
+  }
+
+  btn.textContent = `Clock In (${reservation.event.name})`;
+  btn.disabled = false;
+  label.textContent = `Today's reserved shift: ${reservation.event.name}`;
+}
 
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
