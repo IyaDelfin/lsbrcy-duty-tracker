@@ -78,8 +78,8 @@ function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
   const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
 
-  listEl.innerHTML = active.map(ev => `
-    <div class="card" data-event-id="${ev.id}" style="cursor:pointer; margin-bottom:10px; ${selectedEventId === ev.id ? 'border-color:var(--red);' : ''}">
+    listEl.innerHTML = active.map(ev => `
+    <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
       <div class="row" style="align-items:center;">
         <div>
           <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
@@ -89,6 +89,7 @@ function renderCategoryEvents() {
       </div>
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
 
+  
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     selectedEventId = card.dataset.eventId;
     renderCategoryEvents();
@@ -228,8 +229,9 @@ function renderEventDetails() {
       </div>`;
   }).join("");
 
-  el.innerHTML = `
-    <div class="card" style="margin-top:10px;">
+    el.innerHTML = `
+    <div class="card event-detail-card" style="margin-top:10px;">
+      <p class="eyebrow">Event Details</p>
       <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
@@ -238,6 +240,7 @@ function renderEventDetails() {
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
+  
 
   el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.reserveDate;
