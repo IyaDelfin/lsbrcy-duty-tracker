@@ -40,6 +40,8 @@ let activeCategory = "clinic";
 let viewedCategoryEventId = null;
 let evStatusFilter = "active";
 let evCategoryFilter = "all";
+let editingEventId = null;
+
 
 document.getElementById("evStatusTabs").addEventListener("click", (e) => {
   if (e.target.tagName !== "BUTTON") return;
@@ -155,16 +157,51 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const compliance = document.getElementById("evCompliance").value.trim();
   if (!name) return;
 
+  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance };
+
+  if (editingEventId) {
+    await updateDoc(doc(db, "events", editingEventId), payload);
+    editingEventId = null;
+    document.getElementById("addEventBtn").textContent = "+ Add Event";
+    document.getElementById("cancelEditEventBtn").style.display = "none";
+  } else {
     await addDoc(collection(db, "events"), {
-    name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance,
-    status: "active",
-    signupCount: 0,
-    createdAt: Date.now()
-  });
+      ...payload,
+      status: "active",
+      signupCount: 0,
+      createdAt: Date.now()
+    });
+  }
 
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-
 });
+
+document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
+  editingEventId = null;
+  document.getElementById("addEventBtn").textContent = "+ Add Event";
+  document.getElementById("cancelEditEventBtn").style.display = "none";
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+});
+
+function startEditEvent(ev) {
+  editingEventId = ev.id;
+  document.getElementById("evName").value = ev.name || "";
+  document.getElementById("evLocation").value = ev.location || "";
+  document.getElementById("evCategory").value = ev.category || "clinic";
+  document.getElementById("evMaxHours").value = ev.maxHours != null ? ev.maxHours : "";
+  document.getElementById("evMaxVolunteers").value = ev.maxVolunteers != null ? ev.maxVolunteers : "";
+  document.getElementById("evMaxPerMember").value = ev.maxPerMember != null ? ev.maxPerMember : "";
+  document.getElementById("evStartDate").value = ev.startDate || "";
+  document.getElementById("evEndDate").value = ev.endDate || "";
+  document.getElementById("evDutyStart").value = ev.dutyStart || "";
+  document.getElementById("evDutyEnd").value = ev.dutyEnd || "";
+  document.getElementById("evPic").value = ev.pic || "";
+  document.getElementById("evCompliance").value = ev.compliance || "";
+  document.getElementById("addEventBtn").textContent = "Save Changes";
+  document.getElementById("cancelEditEventBtn").style.display = "inline-block";
+  document.getElementById("evName").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 
 function renderEvents() {
   const el = document.getElementById("eventsList");
@@ -186,6 +223,7 @@ function renderEvents() {
           <button class="secondary" data-action="toggle" data-id="${ev.id}" data-status="${ev.status}">
             ${ev.status === 'active' ? 'Mark Completed' : 'Reopen'}
           </button><br><br>
+          <button class="secondary" data-action="edit-event" data-id="${ev.id}">Edit</button>
           <button class="danger" data-action="delete-event" data-id="${ev.id}">Delete</button>
         </div>
       </div>
@@ -200,9 +238,13 @@ function renderEvents() {
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
 
 
-  el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
+    el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
     const newStatus = btn.dataset.status === "active" ? "completed" : "active";
     await updateDoc(doc(db, "events", btn.dataset.id), { status: newStatus });
+  }));
+  el.querySelectorAll('[data-action="edit-event"]').forEach(btn => btn.addEventListener("click", () => {
+    const ev = allEvents.find(e => e.id === btn.dataset.id);
+    if (ev) startEditEvent(ev);
   }));
   el.querySelectorAll('[data-action="delete-event"]').forEach(btn => btn.addEventListener("click", async () => {
     if (confirm("Delete this event? Duty records referencing it will remain but show as orphaned.")) {
@@ -261,59 +303,6 @@ document.getElementById("memberSearch").addEventListener("input", (e) => {
   renderMembers();
 });
 
-function renderMembers() {
-  const committees = [...new Set(allMembers.map(m => m.committee).filter(Boolean))];
-  const tabsEl = document.getElementById("memberCommitteeTabs");
-  tabsEl.innerHTML = ["all", ...committees].map(c =>
-    `<button data-mc="${escapeHtml(c)}" class="${activeMemberCommittee === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
-  ).join("");
-  tabsEl.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
-    activeMemberCommittee = btn.dataset.mc;
-    renderMembers();
-  }));
-
-  let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
-  if (memberSearchTerm) {
-    filtered = filtered.filter(m =>
-      (m.fullName || m.username || "").toLowerCase().includes(memberSearchTerm) ||
-      (m.studentNo || "").toLowerCase().includes(memberSearchTerm)
-    );
-  }
-
-  const el = document.getElementById("membersList");
-  el.innerHTML = `
-    <div class="card">
-      <h3>Registered Roster (${filtered.length})</h3>
-      <table>
-        <tr><th>Student No.</th><th>Name</th><th>Committee</th><th>Role</th><th></th></tr>
-        ${filtered.map(m => `
-          <tr data-view-id="${m.id}" style="cursor:pointer;">
-            <td>${escapeHtml(m.studentNo || "")}</td>
-            <td>${escapeHtml(m.fullName || m.username || "")}</td>
-            <td>${escapeHtml(m.committee || "")}</td>
-            <td><span class="badge ${m.role === 'admin' ? 'red' : 'blue'}">${m.role}</span></td>
-            <td><button class="danger" data-action="delete-member" data-id="${m.id}" style="padding:6px 10px;font-size:.75rem;">Remove</button></td>
-          </tr>`).join("")}
-      </table>
-      ${filtered.length === 0 ? `<p class="muted">No members match this filter.</p>` : ""}
-    </div>`;
-
-  el.querySelectorAll('tr[data-view-id]').forEach(row => row.addEventListener("click", (e) => {
-    if (e.target.closest('[data-action="delete-member"]')) return;
-    selectedMemberId = row.dataset.viewId;
-    renderMemberDetail();
-  }));
-
-  el.querySelectorAll('[data-action="delete-member"]').forEach(btn => btn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    if (confirm("Remove this member's profile? (Their login account itself must also be deleted from the Firebase Console > Authentication tab.)")) {
-      await deleteDoc(doc(db, "users", btn.dataset.id));
-    }
-  }));
-
-  renderMemberDetail();
-}
-
 function renderMemberDetail() {
   const el = document.getElementById("memberDetail");
   if (!selectedMemberId) { el.innerHTML = ""; return; }
@@ -322,6 +311,7 @@ function renderMemberDetail() {
 
   const records = allRecords.filter(r => r.uid === selectedMemberId);
   const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
+  const eventOptionsHtml = allEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)}</option>`).join("");
 
   el.innerHTML = `
     <div class="card">
@@ -329,11 +319,11 @@ function renderMemberDetail() {
         <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
         <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
       </div>
-            <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
+      <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
       <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
       <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th></th></tr>
         ${records.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
@@ -343,16 +333,86 @@ function renderMemberDetail() {
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
             <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
+            <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>
           </tr>`).join("")}
       </table>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
+
+      <h3 style="margin:16px 0 8px;">+ Add Duty Record</h3>
+      <p class="muted">Manually log a duty entry for this member (e.g. paper logs or make-up duty).</p>
+      <select id="manualRecordEvent">${eventOptionsHtml || `<option value="">No events yet</option>`}</select>
+      <div class="row">
+        <input id="manualRecordDate" type="date">
+        <input id="manualRecordTimeIn" type="time" placeholder="Time in">
+      </div>
+      <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
+      <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
+        <input type="checkbox" id="manualRecordLate" style="width:auto;margin:0;"> Mark as Late
+      </label>
+      <button class="primary" id="addManualRecordBtn" style="width:100%;">+ Add Record</button>
     </div>`;
+
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberId = null;
     renderMemberDetail();
   });
-}
 
+  el.querySelectorAll('[data-action="edit-record"]').forEach(btn => btn.addEventListener("click", async () => {
+    const r = allRecords.find(x => x.id === btn.dataset.id);
+    if (!r) return;
+    const hoursInput = prompt("Hours rendered:", r.hours != null ? r.hours : "");
+    if (hoursInput === null) return;
+    const hours = hoursInput.trim() === "" ? null : parseFloat(hoursInput);
+    const late = confirm("Mark this record as LATE?\n\nOK = Late · Cancel = Not late");
+    await updateDoc(doc(db, "dutyRecords", r.id), { hours, late });
+  }));
+
+  const addManualBtn = document.getElementById("addManualRecordBtn");
+  if (addManualBtn) {
+    addManualBtn.addEventListener("click", async () => {
+      const eventId = document.getElementById("manualRecordEvent").value;
+      const ev = allEvents.find(e => e.id === eventId);
+      const date = document.getElementById("manualRecordDate").value;
+      const timeInStr = document.getElementById("manualRecordTimeIn").value || "08:00";
+      const hoursRaw = document.getElementById("manualRecordHours").value.trim();
+      const late = document.getElementById("manualRecordLate").checked;
+
+      if (!ev || !date || hoursRaw === "") {
+        alert("Please select an event, a date, and enter hours rendered.");
+        return;
+      }
+      const hours = parseFloat(hoursRaw);
+      const timeIn = new Date(`${date}T${timeInStr}:00`).getTime();
+      const timeOut = timeIn + hours * 3600000;
+
+      await addDoc(collection(db, "dutyRecords"), {
+        uid: m.id,
+        studentNo: m.studentNo || "",
+        fullName: m.fullName || m.username || "",
+        committee: m.committee || "",
+        eventId: ev.id,
+        eventName: ev.name,
+        shift: new Date(timeIn).getHours() < 12 ? "AM" : "PM",
+        shiftStart: null,
+        shiftEnd: null,
+        date,
+        timeIn,
+        timeOut,
+        hours,
+        pic: ev.pic || "",
+        verified: true,
+        late,
+        addedByAdmin: true,
+        createdAt: Date.now()
+      });
+
+      document.getElementById("manualRecordDate").value = "";
+      document.getElementById("manualRecordTimeIn").value = "";
+      document.getElementById("manualRecordHours").value = "";
+      document.getElementById("manualRecordLate").checked = false;
+    });
+  }
+}
 // ---------- DUTY RECORDS (tabbed by event, filterable by committee) ----------
 function renderEventSubTabs() {
   const el = document.getElementById("eventSubTabs");
