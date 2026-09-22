@@ -98,6 +98,7 @@ tr:last-child td { border-bottom: none; }
 .badge.green { background: rgba(62,207,142,.15); color: var(--green); }
 .badge.blue { background: rgba(74,158,255,.15); color: var(--blue); }
 .badge.red { background: rgba(217,51,46,.15); color: var(--red); }
+.badge.orange { background: rgba(255,159,10,.15); color: var(--orange); }
 
 .bottomnav {
   position: fixed; bottom: 0; left: 0; right: 0;
