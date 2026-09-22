@@ -142,6 +142,14 @@ function timeOptionsForEvent(ev) {
   return times;
 }
 
+// Minutes between two "HH:MM" 24-hour time strings.
+function minutesBetween(startHHMM, endHHMM) {
+  const [sh, sm] = startHHMM.split(":").map(Number);
+  const [eh, em] = endHHMM.split(":").map(Number);
+  return (eh * 60 + em) - (sh * 60 + sm);
+}
+
+
 async function reserveDate(ev, date, startTime, endTime) {
   const entry = {
     uid: currentUser.uid,
@@ -237,13 +245,14 @@ function renderEventDetails() {
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     const startTime = startSel ? startSel.value : null;
     const endTime = endSel ? endSel.value : null;
-    if (startSel && endSel && startTime >= endTime) {
-      alert("Please pick an end time after your start time.");
+    if (startSel && endSel && minutesBetween(startTime, endTime) < 60) {
+      alert("Please select a shift of at least 1 hour (60 minutes).");
       return;
     }
     reserveDate(ev, date, startTime, endTime);
   }));
 
+  
   el.querySelectorAll('[data-cancel-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.cancelDate;
     const list = (ev.volunteersByDate || {})[date] || [];
