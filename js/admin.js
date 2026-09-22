@@ -303,6 +303,59 @@ document.getElementById("memberSearch").addEventListener("input", (e) => {
   renderMembers();
 });
 
+function renderMembers() {
+  const committees = [...new Set(allMembers.map(m => m.committee).filter(Boolean))];
+  const tabsEl = document.getElementById("memberCommitteeTabs");
+  tabsEl.innerHTML = ["all", ...committees].map(c =>
+    `<button data-mc="${escapeHtml(c)}" class="${activeMemberCommittee === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
+  ).join("");
+  tabsEl.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+    activeMemberCommittee = btn.dataset.mc;
+    renderMembers();
+  }));
+
+  let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
+  if (memberSearchTerm) {
+    filtered = filtered.filter(m =>
+      (m.fullName || m.username || "").toLowerCase().includes(memberSearchTerm) ||
+      (m.studentNo || "").toLowerCase().includes(memberSearchTerm)
+    );
+  }
+
+  const el = document.getElementById("membersList");
+  el.innerHTML = `
+    <div class="card">
+      <h3>Registered Roster (${filtered.length})</h3>
+      <table>
+        <tr><th>Student No.</th><th>Name</th><th>Committee</th><th>Role</th><th></th></tr>
+        ${filtered.map(m => `
+          <tr data-view-id="${m.id}" style="cursor:pointer;">
+            <td>${escapeHtml(m.studentNo || "")}</td>
+            <td>${escapeHtml(m.fullName || m.username || "")}</td>
+            <td>${escapeHtml(m.committee || "")}</td>
+            <td><span class="badge ${m.role === 'admin' ? 'red' : 'blue'}">${m.role}</span></td>
+            <td><button class="danger" data-action="delete-member" data-id="${m.id}" style="padding:6px 10px;font-size:.75rem;">Remove</button></td>
+          </tr>`).join("")}
+      </table>
+      ${filtered.length === 0 ? `<p class="muted">No members match this filter.</p>` : ""}
+    </div>`;
+
+  el.querySelectorAll('tr[data-view-id]').forEach(row => row.addEventListener("click", (e) => {
+    if (e.target.closest('[data-action="delete-member"]')) return;
+    selectedMemberId = row.dataset.viewId;
+    renderMemberDetail();
+  }));
+
+  el.querySelectorAll('[data-action="delete-member"]').forEach(btn => btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (confirm("Remove this member's profile? (Their login account itself must also be deleted from the Firebase Console > Authentication tab.)")) {
+      await deleteDoc(doc(db, "users", btn.dataset.id));
+    }
+  }));
+
+  renderMemberDetail();
+}
+
 function renderMemberDetail() {
   const el = document.getElementById("memberDetail");
   if (!selectedMemberId) { el.innerHTML = ""; return; }
