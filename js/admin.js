@@ -329,23 +329,24 @@ function renderMemberDetail() {
         <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
         <button class="secondary" id="closeMemberDetail" style="max-width:100px;">Close</button>
       </div>
-      <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
+            <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
+      <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
       <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
         ${records.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
-            <td>${escapeHtml(r.shift || "")}</td>
+            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
+            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
           </tr>`).join("")}
       </table>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
     </div>`;
-
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberId = null;
     renderMemberDetail();
