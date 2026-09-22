@@ -16,8 +16,8 @@ let openRecord = null;             // the duty record currently clocked-in, if a
 
 const EARLY_CLOCKIN_MINUTES = 30; // members can clock in this many minutes before their selected start time
 const LATE_GRACE_MINUTES = 5;     // grace period after selected start time before a clock-in counts as "Late"
+const NO_SHOW_MINUTES = 15;       // if not clocked in this many minutes after start, the reservation is auto-cancelled as a No Show
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
-
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "index.html"; return; }
@@ -124,16 +124,72 @@ function findTodaysReservation() {
   return null;
 }
 
-// How many dates this member has already reserved on this event (all dates, not just today).
+// How many dates this member has already reserved/attempted on this event — counts
+// current live reservations AND any past dutyRecords (even ones whose reservation
+// was later auto-removed, e.g. an early-out or a no-show). This stops a member from
+// clocking in/out repeatedly to free up slots and reserve past their per-member limit.
 function memberReservationCountForEvent(ev) {
   const volunteersByDate = ev.volunteersByDate || {};
-  let count = 0;
+  const dateSet = new Set();
   for (const date in volunteersByDate) {
-    if ((volunteersByDate[date] || []).some(v => v.uid === currentUser.uid)) count++;
+    if ((volunteersByDate[date] || []).some(v => v.uid === currentUser.uid)) dateSet.add(date);
   }
-  return count;
+  myRecords.filter(r => r.eventId === ev.id).forEach(r => { if (r.date) dateSet.add(r.date); });
+  return dateSet.size;
+}
+// Auto-cancels a reservation the member never clocked in for, more than
+// NO_SHOW_MINUTES after their selected start time — freeing the slot for
+// others — and leaves behind a "No Show" duty record so it still counts
+// toward their per-member reservation limit on this event.
+async function checkNoShowReservations() {
+  if (!currentUser || !myProfile) return;
+  const now = Date.now();
+
+  for (const ev of allEvents) {
+    const volunteersByDate = ev.volunteersByDate || {};
+    for (const date in volunteersByDate) {
+      const list = volunteersByDate[date] || [];
+      const entry = list.find(v => v.uid === currentUser.uid);
+      if (!entry || !entry.startTime) continue;
+
+      const alreadyHasRecord = myRecords.some(r => r.eventId === ev.id && r.date === date);
+      if (alreadyHasRecord) continue;
+
+      const scheduledStart = combineDateTime(date, entry.startTime);
+      const noShowThreshold = scheduledStart.getTime() + NO_SHOW_MINUTES * 60000;
+      if (now < noShowThreshold) continue;
+
+      try {
+        await addDoc(collection(db, "dutyRecords"), {
+          uid: currentUser.uid,
+          studentNo: myProfile.studentNo || "",
+          fullName: myProfile.fullName || myProfile.username || "",
+          committee: myProfile.committee || "",
+          eventId: ev.id,
+          eventName: ev.name,
+          shift: null,
+          shiftStart: entry.startTime || null,
+          shiftEnd: entry.endTime || null,
+          date,
+          timeIn: null,
+          timeOut: null,
+          hours: 0,
+          pic: ev.pic || "",
+          verified: false,
+          late: false,
+          earlyOut: false,
+          noShow: true,
+          createdAt: Date.now()
+        });
+        await cancelReservation(ev, date, entry);
+      } catch (err) {
+        console.error("No-show sweep failed:", err);
+      }
+    }
+  }
 }
 
+setInterval(checkNoShowReservations, 60000);
 
 // Builds a JS Date for a "YYYY-MM-DD" date + "HH:MM" 24-hour time.
 function combineDateTime(dateStr, hhmm) {
@@ -286,38 +342,47 @@ function renderClockCard() {
   const btn = document.getElementById("clockBtn");
   const label = document.getElementById("selectedEventLabel");
 
-  if (openRecord) {
-    const ev = allEvents.find(e => e.id === openRecord.eventId);
-    btn.textContent = `Clock Out (${ev ? ev.name : "current shift"})`;
-    btn.disabled = false;
-    label.textContent = `Currently clocked in${ev ? " — " + ev.name : ""}.`;
-    return;
-  }
+    if (openRecord) {
+      // Snapshot everything we need from openRecord *before* the write below —
+      // the onSnapshot listener can flip the module-level `openRecord` to null
+      // the instant the record's timeOut is saved, so referencing openRecord
+      // again after the await is unreliable.
+      const recordId = openRecord.id;
+      const eventId = openRecord.eventId;
+      const recordDate = openRecord.date;
+      const shiftEnd = openRecord.shiftEnd;
+      const timeIn = openRecord.timeIn;
 
-  const reservation = findTodaysReservation();
-  if (!reservation) {
-    btn.textContent = "Clock In";
-    btn.disabled = true;
-    label.textContent = "Reserve a slot for today's date on an event above, then come back here.";
-    return;
-  }
+      const timeOut = Date.now();
+      const hours = +((timeOut - timeIn) / 3600000).toFixed(2);
 
-  if (reservation.startTime) {
-    const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
-    const earliestClockIn = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
-    const timeRangeLabel = `${formatTime12(reservation.startTime)}–${formatTime12(reservation.endTime)}`;
+      let earlyOut = false;
+      let confirmMsg = "Confirm clock out.";
+      if (shiftEnd) {
+        const scheduledEnd = combineDateTime(recordDate, shiftEnd);
+        if (timeOut < scheduledEnd.getTime()) {
+          earlyOut = true;
+          const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
+          const hrs = Math.floor(remainingMins / 60);
+          const mins = remainingMins % 60;
+          const remainingLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+          confirmMsg = `Confirm clock out? You still have ${remainingLabel} left.`;
+        }
+      }
 
-    if (new Date() < earliestClockIn) {
-      btn.textContent = `Clock In (${reservation.event.name})`;
-      btn.disabled = true;
-      label.textContent = `Today's reserved shift: ${reservation.event.name} (${timeRangeLabel}). You can clock in starting at ${earliestClockIn.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}.`;
-      return;
-    }
+      if (!confirm(confirmMsg)) { btn.disabled = false; return; }
 
-    btn.textContent = `Clock In (${reservation.event.name})`;
-    btn.disabled = false;
-    label.textContent = `Today's reserved shift: ${reservation.event.name} (${timeRangeLabel}).`;
-  } else {
+      await updateDoc(doc(db, "dutyRecords", recordId), { timeOut, hours, earlyOut });
+
+      if (earlyOut) {
+        const ev = allEvents.find(e => e.id === eventId);
+        if (ev) {
+          const list = (ev.volunteersByDate || {})[recordDate] || [];
+          const entry = list.find(v => v.uid === currentUser.uid);
+          if (entry) await cancelReservation(ev, recordDate, entry);
+        }
+      }
+    } else {
     btn.textContent = `Clock In (${reservation.event.name})`;
     btn.disabled = false;
     label.textContent = `Today's reserved shift: ${reservation.event.name}`;
@@ -438,18 +503,19 @@ function renderRecords() {
       <div class="row">
         <p class="muted">Late Count: <strong style="color:var(--orange);">${myRecords.filter(r => r.late).length}</strong></p>
         <p class="muted">Early Out Count: <strong style="color:var(--blue);">${myRecords.filter(r => r.earlyOut).length}</strong></p>
+        <p class="muted">No Show Count: <strong style="color:var(--red);">${myRecords.filter(r => r.noShow).length}</strong></p>
       </div>
       <table>
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
         ${filtered.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
             <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
+            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
+            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
           </tr>`).join("")}
       </table>
       ${filtered.length === 0 ? `<p class="muted">No duty logs yet.</p>` : ""}
