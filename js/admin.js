@@ -382,6 +382,7 @@ function renderMemberDetail() {
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
       <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
       <p class="muted">Early Out Count: <strong style="color:var(--blue);">${records.filter(r => r.earlyOut).length}</strong></p>
+      <p class="muted">No Show Count: <strong style="color:var(--red);">${records.filter(r => r.noShow).length}</strong></p>
       <table>
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th></th></tr>
         ${records.map(r => `
@@ -392,9 +393,8 @@ function renderMemberDetail() {
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-            <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>
-          </tr>`).join("")}
+            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
+            <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>          </tr>`).join("")}
       </table>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
       <hr class="section-divider">
@@ -511,12 +511,13 @@ function renderRecords() {
             <td>${escapeHtml(r.eventName || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
             <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
+            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
+            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-            <td><button class="danger" data-action="delete-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Del</button></td>
-          </tr>`).join("")}
+            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
+            <td><button class="danger" data-action="delete-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Del</button></td>          </tr>`).join("")}
     </table>
       ${filtered.length === 0 ? `<p class="muted">No records match this filter.</p>` : ""}
     </div>`;
