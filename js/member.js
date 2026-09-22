@@ -15,6 +15,8 @@ let selectedEventId = null;        // event chosen from the list, to view detail
 let openRecord = null;             // the duty record currently clocked-in, if any
 
 const MIN_MINUTES = 60; // minimum shift length before clock-out is allowed
+const EARLY_CLOCKIN_MINUTES = 30; // members can clock in this many minutes before their selected start time
+const LATE_GRACE_MINUTES = 5;     // grace period after selected start time before a clock-in counts as "Late"
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 onAuthStateChanged(auth, async (user) => {
@@ -115,18 +117,42 @@ function findTodaysReservation() {
   const today = todayStr();
   for (const ev of allEvents) {
     const list = (ev.volunteersByDate || {})[today] || [];
-    if (list.some(v => v.uid === currentUser.uid)) return { event: ev, date: today };
+    const entry = list.find(v => v.uid === currentUser.uid);
+    if (entry) return { event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null };
   }
   return null;
 }
 
-async function reserveDate(ev, date) {
+// Builds a JS Date for a "YYYY-MM-DD" date + "HH:MM" 24-hour time.
+function combineDateTime(dateStr, hhmm) {
+  return new Date(`${dateStr}T${hhmm}:00`);
+}
+
+// 30-minute-increment time options between an event's dutyStart and dutyEnd.
+function timeOptionsForEvent(ev) {
+  if (!ev.dutyStart || !ev.dutyEnd) return [];
+  const times = [];
+  let [h, m] = ev.dutyStart.split(":").map(Number);
+  const [endH, endM] = ev.dutyEnd.split(":").map(Number);
+  while (h < endH || (h === endH && m <= endM)) {
+    times.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    m += 30;
+    if (m >= 60) { m -= 60; h += 1; }
+  }
+  return times;
+}
+
+async function reserveDate(ev, date, startTime, endTime) {
+  const entry = {
+    uid: currentUser.uid,
+    fullName: myProfile.fullName || myProfile.username,
+    studentNo: myProfile.studentNo || ""
+  };
+  if (startTime) entry.startTime = startTime;
+  if (endTime) entry.endTime = endTime;
+
   await updateDoc(doc(db, "events", ev.id), {
-    [`volunteersByDate.${date}`]: arrayUnion({
-      uid: currentUser.uid,
-      fullName: myProfile.fullName || myProfile.username,
-      studentNo: myProfile.studentNo || ""
-    })
+    [`volunteersByDate.${date}`]: arrayUnion(entry)
   });
 }
 
@@ -144,34 +170,41 @@ function renderEventDetails() {
 
   const volunteersByDate = ev.volunteersByDate || {};
   const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+  const timeOptions = timeOptionsForEvent(ev);
+  const hasTimeRange = timeOptions.length > 1;
 
-    const myReservedCount = dates.filter(d => (volunteersByDate[d] || []).some(v => v.uid === currentUser.uid)).length;
-    const atPersonalLimit = ev.maxPerMember != null && myReservedCount >= ev.maxPerMember;
-    const datesHtml = dates.map(date => {
+  const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
     const full = ev.maxVolunteers != null && list.length >= ev.maxVolunteers;
-    const alreadyReserved = list.some(v => v.uid === currentUser.uid);
-
+    const myEntry = list.find(v => v.uid === currentUser.uid);
+    const alreadyReserved = !!myEntry;
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
     const namesHtml = list.length
-      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
+      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "") + (v.startTime ? ` (${formatTime12(v.startTime)}–${formatTime12(v.endTime)})` : "")).join(", ")}</p>`
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
 
     let actionHtml;
     if (alreadyReserved) {
       actionHtml = `<div style="text-align:right;">
-          <span class="badge green">Reserved</span><br>
+          <span class="badge green">Reserved${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}</span><br>
           <button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>
         </div>`;
     } else if (full) {
       actionHtml = `<span class="badge red">Full</span>`;
-    } else if (atPersonalLimit) {
-      actionHtml = `<span class="badge blue">Limit reached</span>`;
     } else {
       actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
     }
 
+    const timePickerHtml = (!alreadyReserved && !full && hasTimeRange) ? `
+        <div class="row" style="margin-top:8px;">
+          <select data-start-time="${date}">
+            ${timeOptions.slice(0, -1).map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
+          </select>
+          <select data-end-time="${date}">
+            ${timeOptions.slice(1).map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
+          </select>
+        </div>` : "";
 
     return `
       <div class="card" style="margin-bottom:8px;">
@@ -182,6 +215,7 @@ function renderEventDetails() {
           </div>
           ${actionHtml}
         </div>
+        ${timePickerHtml}
         ${namesHtml}
       </div>`;
   }).join("");
@@ -192,13 +226,23 @@ function renderEventDetails() {
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
-      ${ev.maxPerMember != null ? `<p class="muted">You can reserve up to ${ev.maxPerMember} day(s) for this event (reserved so far: ${myReservedCount})</p>` : ""}
+      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
-
-    el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => reserveDate(ev, btn.dataset.reserveDate)));
+  el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => {
+    const date = btn.dataset.reserveDate;
+    const startSel = el.querySelector(`[data-start-time="${date}"]`);
+    const endSel = el.querySelector(`[data-end-time="${date}"]`);
+    const startTime = startSel ? startSel.value : null;
+    const endTime = endSel ? endSel.value : null;
+    if (startSel && endSel && startTime >= endTime) {
+      alert("Please pick an end time after your start time.");
+      return;
+    }
+    reserveDate(ev, date, startTime, endTime);
+  }));
 
   el.querySelectorAll('[data-cancel-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.cancelDate;
@@ -206,7 +250,6 @@ function renderEventDetails() {
     const entry = list.find(v => v.uid === currentUser.uid);
     if (entry) cancelReservation(ev, date, entry);
   }));
-
 }
 
 // ---------- CLOCK IN / OUT ----------
@@ -223,16 +266,39 @@ function renderClockCard() {
   }
 
   const reservation = findTodaysReservation();
-  if (reservation) {
-    btn.textContent = `Clock In (${reservation.event.name})`;
-    btn.disabled = false;
-    label.textContent = `Today's reserved shift: ${reservation.event.name}`;
-  } else {
+  if (!reservation) {
     btn.textContent = "Clock In";
     btn.disabled = true;
     label.textContent = "Reserve a slot for today's date on an event above, then come back here.";
+    return;
+  }
+
+  if (reservation.startTime) {
+    const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
+    const earliestClockIn = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
+    const timeRangeLabel = `${formatTime12(reservation.startTime)}–${formatTime12(reservation.endTime)}`;
+
+    if (new Date() < earliestClockIn) {
+      btn.textContent = `Clock In (${reservation.event.name})`;
+      btn.disabled = true;
+      label.textContent = `Today's reserved shift: ${reservation.event.name} (${timeRangeLabel}). You can clock in starting at ${earliestClockIn.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}.`;
+      return;
+    }
+
+    btn.textContent = `Clock In (${reservation.event.name})`;
+    btn.disabled = false;
+    label.textContent = `Today's reserved shift: ${reservation.event.name} (${timeRangeLabel}).`;
+  } else {
+    btn.textContent = `Clock In (${reservation.event.name})`;
+    btn.disabled = false;
+    label.textContent = `Today's reserved shift: ${reservation.event.name}`;
   }
 }
+
+// Re-check every 30s so the button enables itself once a member crosses
+// into their 30-minutes-early window, without needing a page refresh.
+setInterval(renderClockCard, 30000);
+
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
@@ -258,7 +324,22 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       if (!reservation) { btn.disabled = false; return; }
       const ev = reservation.event;
       const now = new Date();
-            await addDoc(collection(db, "dutyRecords"), {
+
+      let late = false;
+      if (reservation.startTime) {
+        const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
+        const earliestClockIn = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
+        const lateThreshold = new Date(scheduledStart.getTime() + LATE_GRACE_MINUTES * 60000);
+
+        if (now < earliestClockIn) {
+          errEl.textContent = `Too early to clock in. You can clock in starting at ${earliestClockIn.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}.`;
+          btn.disabled = false;
+          return;
+        }
+        late = now > lateThreshold;
+      }
+
+      await addDoc(collection(db, "dutyRecords"), {
         uid: currentUser.uid,
         studentNo: myProfile.studentNo,
         fullName: myProfile.fullName || myProfile.username,
@@ -266,12 +347,15 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
         eventId: ev.id,
         eventName: ev.name,
         shift: now.getHours() < 12 ? "AM" : "PM",
+        shiftStart: reservation.startTime || null,
+        shiftEnd: reservation.endTime || null,
         date: reservation.date,
         timeIn: now.getTime(),
         timeOut: null,
         hours: null,
         pic: ev.pic || "",
         verified: false,
+        late,
         createdAt: Date.now()
       });
     }
@@ -304,22 +388,37 @@ function renderRecords() {
   el.innerHTML = `
     <div class="card">
       <h3>My Duty Logs</h3>
+      <p class="muted">Late Count: <strong style="color:var(--orange);">${myRecords.filter(r => r.late).length}</strong></p>
       <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th></tr>
+        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
         ${filtered.map(r => `
           <tr>
             <td>${escapeHtml(r.eventName || "")}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
-            <td>${escapeHtml(r.shift || "")}</td>
+            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
+            <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
           </tr>`).join("")}
       </table>
       ${filtered.length === 0 ? `<p class="muted">No duty logs yet.</p>` : ""}
     </div>`;
 }
 
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+// Formats a 24-hour "HH:MM" string as "H:MM AM/PM", using "NN" for noon
+// and "MN" for midnight (Philippine duty-roster convention).
+function formatTime12(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  const mm = String(m).padStart(2, "0");
+  if (h === 0) return `12:${mm} MN`;
+  if (h === 12) return `12:${mm} NN`;
+  if (h < 12) return `${h}:${mm} AM`;
+  return `${h - 12}:${mm} PM`;
 }
