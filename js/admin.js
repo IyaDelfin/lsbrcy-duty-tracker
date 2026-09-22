@@ -397,7 +397,9 @@ function renderRecords() {
             <td>${r.late ? "<span class='badge orange'>Late</span>" : ""}</td>
             <td><button class="danger" data-action="delete-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Del</button></td>
           </tr>`).join("")}
-      </table>
+    </table>
+      ${filtered.length === 0 ? `<p class="muted">No records match this filter.</p>` : ""}
+    </div>`;
 
   document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeCommitteeFilter = btn.dataset.committee;
