@@ -125,9 +125,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 .tabs button.active { background: var(--red); color: white; }
 
-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: .75rem; text-transform: uppercase; }
-td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: .78rem; display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: .68rem; text-transform: uppercase; white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 tr:last-child td { border-bottom: none; }
 
 .badge { padding: 3px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600; }
