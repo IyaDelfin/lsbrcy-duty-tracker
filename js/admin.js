@@ -149,18 +149,20 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const maxPerMember = maxPerMemberRaw === "" ? null : parseInt(maxPerMemberRaw, 10);
   const startDate = document.getElementById("evStartDate").value || null;
   const endDate = document.getElementById("evEndDate").value || null;
+  const dutyStart = document.getElementById("evDutyStart").value || null;
+  const dutyEnd = document.getElementById("evDutyEnd").value || null;
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   if (!name) return;
 
     await addDoc(collection(db, "events"), {
-    name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, pic, compliance,
+    name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance,
     status: "active",
     signupCount: 0,
     createdAt: Date.now()
   });
 
-  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
 
 });
 
@@ -192,9 +194,10 @@ function renderEvents() {
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${ev.maxVolunteers != null ? `<p class="muted">Max per day: ${ev.maxVolunteers}${ev.volunteersByDate ? ' · Total reservations: ' + Object.values(ev.volunteersByDate).reduce((s,a)=>s+a.length,0) : ''}</p>` : ""}
       ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
+      ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
+      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
-
 
 
   el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
