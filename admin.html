@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin — LSBRCY Duty Tracker</title>
 <link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 </head>
+
 <body>
   <div class="topbar">
     <div class="logo">🌻</div>
@@ -118,13 +120,13 @@
       <div id="memberDetail"></div>
     </div>
 
-
     <!-- DUTY RECORDS -->
     <div id="tab-records" class="tabpanel" style="display:none;">
+      <button class="primary" id="exportRecordsBtn" style="width:100%;margin-bottom:12px;">⬇ Export to Excel</button>
       <div class="tabs" id="eventSubTabs"></div>
       <div id="recordsList"></div>
     </div>
-  </div>
+
 
 <script type="module" src="js/admin.js"></script>
 </body>
