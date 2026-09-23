@@ -381,14 +381,25 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
   errEl.textContent = "";
   btn.disabled = true;
   try {
-    if (openRecord) {
+
+        if (openRecord) {
+      // Snapshot everything we need from openRecord *before* the write below —
+      // the onSnapshot listener can flip the module-level `openRecord` to null
+      // the instant the record's timeOut is saved, so referencing openRecord
+      // again after the await is unreliable.
+      const recordId = openRecord.id;
+      const eventId = openRecord.eventId;
+      const recordDate = openRecord.date;
+      const shiftEnd = openRecord.shiftEnd;
+      const timeIn = openRecord.timeIn;
+
       const timeOut = Date.now();
-      const hours = +((timeOut - openRecord.timeIn) / 3600000).toFixed(2);
+      const hours = +((timeOut - timeIn) / 3600000).toFixed(2);
 
       let earlyOut = false;
       let confirmMsg = "Confirm clock out.";
-      if (openRecord.shiftEnd) {
-        const scheduledEnd = combineDateTime(openRecord.date, openRecord.shiftEnd);
+      if (shiftEnd) {
+        const scheduledEnd = combineDateTime(recordDate, shiftEnd);
         if (timeOut < scheduledEnd.getTime()) {
           earlyOut = true;
           const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
@@ -401,17 +412,18 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
 
       if (!confirm(confirmMsg)) { btn.disabled = false; return; }
 
-      await updateDoc(doc(db, "dutyRecords", openRecord.id), { timeOut, hours, earlyOut });
+      await updateDoc(doc(db, "dutyRecords", recordId), { timeOut, hours, earlyOut });
 
       if (earlyOut) {
-        const ev = allEvents.find(e => e.id === openRecord.eventId);
+        const ev = allEvents.find(e => e.id === eventId);
         if (ev) {
-          const list = (ev.volunteersByDate || {})[openRecord.date] || [];
+          const list = (ev.volunteersByDate || {})[recordDate] || [];
           const entry = list.find(v => v.uid === currentUser.uid);
-          if (entry) await cancelReservation(ev, openRecord.date, entry);
+          if (entry) await cancelReservation(ev, recordDate, entry);
         }
       }
     } else {
+
       const reservation = findTodaysReservation();
       if (!reservation) { btn.disabled = false; return; }
       const ev = reservation.event;
