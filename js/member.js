@@ -59,7 +59,8 @@ function initData() {
       myRecords = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => b.createdAt - a.createdAt);
-      openRecord = myRecords.find(r => r.timeOut == null) || null;
+      openRecord = myRecords.find(r => r.timeIn != null && r.timeOut == null && !r.noShow) || null;
+
       updateTotalHours();
       renderClockCard();
       renderEventSubTabs();
