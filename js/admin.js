@@ -489,21 +489,28 @@ function renderEventSubTabs() {
     renderRecords();
   }));
 }
+// Applies the same event/committee tab filters the Records tab is currently
+// showing. Shared by renderRecords() and the Excel export so the export
+// always matches exactly what's on screen.
+function getFilteredRecords() {
+  let filtered = activeEventFilter === "all" ? allRecords : allRecords.filter(r => r.eventId === activeEventFilter);
+  if (activeCommitteeFilter !== "all") {
+    filtered = filtered.filter(r => r.committee === activeCommitteeFilter);
+  }
+  return filtered;
+}
 
 function renderRecords() {
   const el = document.getElementById("recordsList");
-  let filtered = activeEventFilter === "all" ? allRecords : allRecords.filter(r => r.eventId === activeEventFilter);
+  const filtered = getFilteredRecords();
 
   const committees = [...new Set(allRecords.map(r => r.committee).filter(Boolean))];
   const committeeTabsHtml = ["all", ...committees].map(c =>
     `<button data-committee="${escapeHtml(c)}" class="${activeCommitteeFilter === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
   ).join("");
 
-  if (activeCommitteeFilter !== "all") {
-    filtered = filtered.filter(r => r.committee === activeCommitteeFilter);
-  }
-
   el.innerHTML = `
+
     <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
     <div class="card">
             <table>
@@ -533,6 +540,107 @@ function renderRecords() {
   el.querySelectorAll('[data-action="delete-record"]').forEach(btn => btn.addEventListener("click", async () => {
     if (confirm("Delete this duty record?")) await deleteDoc(doc(db, "dutyRecords", btn.dataset.id));
   }));
+}
+
+document.getElementById("exportRecordsBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("exportRecordsBtn");
+  btn.disabled = true;
+  btn.textContent = "Exporting...";
+  try {
+    await exportRecordsToExcel(getFilteredRecords());
+  } catch (err) {
+    alert("Export failed: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "⬇ Export to Excel";
+  }
+});
+
+// One sheet per committee ("Unassigned" for records with no committee set),
+// and inside each sheet, one small table per event — ordered by that
+// event's earliest reserved date — rather than one long flat table.
+async function exportRecordsToExcel(records) {
+  const workbook = new ExcelJS.Workbook();
+  const columnDefs = [
+    { header: "Student No.", width: 14 },
+    { header: "Name", width: 26 },
+    { header: "Date", width: 12 },
+    { header: "Shift", width: 20 },
+    { header: "In", width: 10 },
+    { header: "Out", width: 10 },
+    { header: "Hrs", width: 8 },
+    { header: "Status", width: 20 },
+  ];
+
+  const byCommittee = new Map();
+  for (const r of records) {
+    const committee = r.committee || "Unassigned";
+    if (!byCommittee.has(committee)) byCommittee.set(committee, []);
+    byCommittee.get(committee).push(r);
+  }
+
+  const committeeNames = [...byCommittee.keys()].sort((a, b) =>
+    a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b)
+  );
+
+  for (const committee of committeeNames) {
+    const sheet = workbook.addWorksheet(sanitizeSheetName(committee));
+    sheet.columns = columnDefs.map(c => ({ width: c.width }));
+
+    const byEvent = new Map();
+    for (const r of byCommittee.get(committee)) {
+      const key = r.eventId || r.eventName || "Unknown Event";
+      if (!byEvent.has(key)) byEvent.set(key, { name: r.eventName || "Unknown Event", records: [] });
+      byEvent.get(key).records.push(r);
+    }
+    const eventGroups = [...byEvent.values()].sort((a, b) => {
+      const aDate = a.records.map(r => r.date).filter(Boolean).sort()[0] || "";
+      const bDate = b.records.map(r => r.date).filter(Boolean).sort()[0] || "";
+      return aDate.localeCompare(bDate);
+    });
+
+    for (const group of eventGroups) {
+      const titleRow = sheet.addRow([group.name]);
+      titleRow.font = { bold: true, size: 12 };
+      sheet.mergeCells(titleRow.number, 1, titleRow.number, columnDefs.length);
+
+      const headerRow = sheet.addRow(columnDefs.map(c => c.header));
+      headerRow.font = { bold: true };
+      headerRow.eachCell(cell => { cell.border = { bottom: { style: "thin" } }; });
+
+      const sortedRecords = [...group.records].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      for (const r of sortedRecords) {
+        sheet.addRow([
+          r.studentNo || "",
+          r.fullName || "",
+          r.date || "",
+          `${r.shift || ""}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}`.trim(),
+          r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–",
+          r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (r.noShow ? "–" : "Active"),
+          r.hours != null ? Number(r.hours.toFixed(1)) : "",
+          [r.noShow ? "No Show" : "", r.late ? "Late" : "", r.earlyOut ? "Early Out" : ""].filter(Boolean).join(", "),
+        ]);
+      }
+
+      sheet.addRow([]); // spacer before the next event's table
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Excel sheet names can't contain \ / ? * [ ] : and are capped at 31 chars.
+function sanitizeSheetName(name) {
+  return String(name).replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet";
 }
 
 function escapeHtml(str) {
