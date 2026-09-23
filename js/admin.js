@@ -544,11 +544,15 @@ function renderRecords() {
 
 document.getElementById("exportRecordsBtn").addEventListener("click", async () => {
   const btn = document.getElementById("exportRecordsBtn");
+  // Must open synchronously, in the same tick as the tap — iOS Safari
+  // silently blocks window/download actions once we're past an `await`.
+  const downloadWindow = window.open("", "_blank");
   btn.disabled = true;
   btn.textContent = "Exporting...";
   try {
-    await exportRecordsToExcel(getFilteredRecords());
+    await exportRecordsToExcel(getFilteredRecords(), downloadWindow);
   } catch (err) {
+    if (downloadWindow) downloadWindow.close();
     alert("Export failed: " + err.message);
   } finally {
     btn.disabled = false;
@@ -556,10 +560,11 @@ document.getElementById("exportRecordsBtn").addEventListener("click", async () =
   }
 });
 
+
 // One sheet per committee ("Unassigned" for records with no committee set),
 // and inside each sheet, one small table per event — ordered by that
 // event's earliest reserved date — rather than one long flat table.
-async function exportRecordsToExcel(records) {
+async function exportRecordsToExcel(records, downloadWindow) {
   const workbook = new ExcelJS.Workbook();
   const columnDefs = [
     { header: "Student No.", width: 14 },
@@ -629,14 +634,24 @@ async function exportRecordsToExcel(records) {
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+
+  if (downloadWindow) {
+    // Reuses the tab opened synchronously at tap-time — this is what
+    // actually gets past iOS Safari's popup/download blocking.
+    downloadWindow.location.href = url;
+  } else {
+    // Popup was blocked before we even got here — fall back to a normal
+    // same-tab download link.
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
 
 // Excel sheet names can't contain \ / ? * [ ] : and are capped at 31 chars.
 function sanitizeSheetName(name) {
