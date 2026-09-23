@@ -342,7 +342,7 @@ function renderMembers() {
             <td>${escapeHtml(m.studentNo || "")}</td>
             <td>${escapeHtml(m.fullName || m.username || "")}</td>
             <td>${escapeHtml(m.committee || "")}</td>
-            <td><span class="badge ${m.role === 'admin' ? 'red' : 'blue'}">${m.role}</span></td>
+            <td><span class="badge ${m.role === 'admin' ? 'red' : m.role === 'stratres' ? 'orange' : 'blue'}">${m.role}</span></td>
             <td><button class="danger" data-action="delete-member" data-id="${m.id}" style="padding:6px 10px;font-size:.75rem;">Remove</button></td>
           </tr>`).join("")}
       </table>
