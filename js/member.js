@@ -49,6 +49,7 @@ function initData() {
     renderCategoryEvents();
     renderEventDetails();
     renderClockCard();
+    renderWeeklyReservations();
   });
 
   // Security rules restrict this query to the signed-in user's own records.
@@ -59,15 +60,16 @@ function initData() {
       myRecords = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => b.createdAt - a.createdAt);
-      openRecord = myRecords.find(r => r.timeIn != null && r.timeOut == null && !r.noShow) || null;
-
+      openRecord = myRecords.find(r => r.timeOut == null) || null;
       updateTotalHours();
       renderClockCard();
       renderEventSubTabs();
       renderRecords();
+      renderWeeklyReservations();
     }
   );
 }
+
 
 function updateTotalHours() {
   const total = myRecords.reduce((sum, r) => sum + (r.hours || 0), 0);
@@ -123,6 +125,64 @@ function findTodaysReservation() {
     if (entry) return { event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null };
   }
   return null;
+}
+
+// Monday-to-Sunday range containing `date` (defaults to today).
+function getWeekRange(date = new Date()) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0 = Sunday
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+
+// Live reservations for this member within the current week. A reservation
+// drops off once there's a dutyRecord for that event+date that's clocked
+// out or a no-show (early-out/no-show already clear the underlying
+// volunteersByDate entry too — this also covers a normal, on-time clock-out,
+// which doesn't remove that entry).
+function renderWeeklyReservations() {
+  const el = document.getElementById("weeklyReservations");
+  if (!el) return;
+
+  const { start, end } = getWeekRange();
+  const items = [];
+
+  for (const ev of allEvents) {
+    const volunteersByDate = ev.volunteersByDate || {};
+    for (const date in volunteersByDate) {
+      const dateObj = new Date(date + "T00:00:00");
+      if (dateObj < start || dateObj > end) continue;
+
+      const entry = (volunteersByDate[date] || []).find(v => v.uid === currentUser.uid);
+      if (!entry) continue;
+
+      const record = myRecords.find(r => r.eventId === ev.id && r.date === date);
+      if (record && (record.timeOut != null || record.noShow)) continue;
+
+      items.push({ ev, date, entry, onDuty: !!(record && record.timeOut == null) });
+    }
+  }
+
+  items.sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!items.length) {
+    el.innerHTML = `<p class="muted">No reservations this week.</p>`;
+    return;
+  }
+
+  el.innerHTML = items.map(({ ev, date, entry, onDuty }) => {
+    const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    const timeLabel = entry.startTime ? ` · ${formatTime12(entry.startTime)}–${formatTime12(entry.endTime)}` : "";
+    return `<div class="row" style="align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+        <div><strong>${escapeHtml(ev.name)}</strong><p class="muted" style="margin:2px 0 0;">${dateLabel}${timeLabel}</p></div>
+        ${onDuty ? `<span class="badge blue">On Duty</span>` : `<span class="badge green">Reserved</span>`}
+      </div>`;
+  }).join("");
 }
 
 // How many dates this member has already reserved/attempted on this event — counts
