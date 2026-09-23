@@ -159,9 +159,10 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const dutyEnd = document.getElementById("evDutyEnd").value || null;
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
+  const manualOnly = document.getElementById("evManualOnly").checked;
   if (!name) return;
 
-  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance };
+  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance, manualOnly };
 
   if (editingEventId) {
     await updateDoc(doc(db, "events", editingEventId), payload);
@@ -178,6 +179,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   }
 
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("evManualOnly").checked = false;
 });
 
 document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
@@ -185,6 +187,7 @@ document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("evManualOnly").checked = false;
 });
 
 function startEditEvent(ev) {
@@ -201,6 +204,7 @@ function startEditEvent(ev) {
   document.getElementById("evDutyEnd").value = ev.dutyEnd || "";
   document.getElementById("evPic").value = ev.pic || "";
   document.getElementById("evCompliance").value = ev.compliance || "";
+  document.getElementById("evManualOnly").checked = !!ev.manualOnly;
   document.getElementById("addEventBtn").textContent = "Save Changes";
   document.getElementById("cancelEditEventBtn").style.display = "inline-block";
   document.getElementById("evName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -222,6 +226,7 @@ function renderEvents() {
           <p class="muted" style="margin:0 0 6px;">${escapeHtml(ev.location || "")}</p>
           <span class="badge blue">${escapeHtml(CATEGORY_LABELS[ev.category] || "Uncategorized")}</span>
           <span class="badge ${ev.status === 'active' ? 'green' : 'blue'}">${ev.status}</span>
+          ${ev.manualOnly ? `<span class="badge red">Manual Only</span>` : ""}
         </div>
         <div style="text-align:right;">
           <button class="secondary" data-action="toggle" data-id="${ev.id}" data-status="${ev.status}">
