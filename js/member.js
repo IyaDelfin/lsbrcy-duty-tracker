@@ -77,7 +77,7 @@ function updateTotalHours() {
 // ---------- AVAILABLE EVENTS (category tabs + clickable list) ----------
 function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
-  const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
+  const active = allEvents.filter(e => e.status === "active" && !e.manualOnly && (e.category || "clinic") === activeCategory);
 
     listEl.innerHTML = active.map(ev => `
     <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
