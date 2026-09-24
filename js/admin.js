@@ -143,15 +143,8 @@ function renderCategoryEventDetails() {
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`;
 
-${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
-  el.querySelectorAll('[data-start-time]').forEach(startSel => startSel.addEventListener("change", () => {
-    const date = startSel.dataset.startTime;
-    const endSel = el.querySelector(`[data-end-time="${date}"]`);
-    if (!endSel) return;
-    endSel.innerHTML = endTimeOptions(ev, startSel.value)
-      .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
-  }));
+}
 
 
 
