@@ -41,6 +41,8 @@ let viewedCategoryEventId = null;
 let evStatusFilter = "active";
 let evCategoryFilter = "all";
 let editingEventId = null;
+let editingTimeWindows = [];
+
 
 
 document.getElementById("evStatusTabs").addEventListener("click", (e) => {
@@ -137,10 +139,12 @@ function renderCategoryEventDetails() {
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS_2[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
-      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
+       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
+      ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`;
 }
+
 
 // ---------- EVENTS ----------
 document.getElementById("addEventBtn").addEventListener("click", async () => {
@@ -155,14 +159,13 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const maxPerMember = maxPerMemberRaw === "" ? null : parseInt(maxPerMemberRaw, 10);
   const startDate = document.getElementById("evStartDate").value || null;
   const endDate = document.getElementById("evEndDate").value || null;
-  const dutyStart = document.getElementById("evDutyStart").value || null;
-  const dutyEnd = document.getElementById("evDutyEnd").value || null;
+  const timeWindows = editingTimeWindows.filter(w => w.start && w.end);
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   const manualOnly = document.getElementById("evManualOnly").checked;
   if (!name) return;
 
-  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, dutyStart, dutyEnd, pic, compliance, manualOnly };
+  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, timeWindows, pic, compliance, manualOnly };
 
   if (editingEventId) {
     await updateDoc(doc(db, "events", editingEventId), payload);
@@ -178,17 +181,22 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
     });
   }
 
-  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("evManualOnly").checked = false;
+  editingTimeWindows = [];
+  renderTimeWindowRows();
 });
 
 document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   editingEventId = null;
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
-  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evDutyStart","evDutyEnd","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("evManualOnly").checked = false;
+  editingTimeWindows = [];
+  renderTimeWindowRows();
 });
+
 
 function startEditEvent(ev) {
   editingEventId = ev.id;
@@ -200,8 +208,10 @@ function startEditEvent(ev) {
   document.getElementById("evMaxPerMember").value = ev.maxPerMember != null ? ev.maxPerMember : "";
   document.getElementById("evStartDate").value = ev.startDate || "";
   document.getElementById("evEndDate").value = ev.endDate || "";
-  document.getElementById("evDutyStart").value = ev.dutyStart || "";
-  document.getElementById("evDutyEnd").value = ev.dutyEnd || "";
+  editingTimeWindows = Array.isArray(ev.timeWindows) && ev.timeWindows.length
+    ? ev.timeWindows.map(w => ({ start: w.start, end: w.end }))
+    : (ev.dutyStart && ev.dutyEnd ? [{ start: ev.dutyStart, end: ev.dutyEnd }] : []);
+  renderTimeWindowRows();
   document.getElementById("evPic").value = ev.pic || "";
   document.getElementById("evCompliance").value = ev.compliance || "";
   document.getElementById("evManualOnly").checked = !!ev.manualOnly;
@@ -210,6 +220,41 @@ function startEditEvent(ev) {
   document.getElementById("evName").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+function renderTimeWindowRows() {
+  const el = document.getElementById("evTimeWindows");
+  el.innerHTML = editingTimeWindows.map((w, i) => `
+    <div class="row" data-window-row="${i}">
+      <input type="time" data-window-start="${i}" value="${w.start || ""}">
+      <input type="time" data-window-end="${i}" value="${w.end || ""}">
+      <button type="button" class="danger" data-remove-window="${i}" style="padding:6px 10px;font-size:.75rem;">✕</button>
+    </div>`).join("");
+
+  el.querySelectorAll("[data-window-start]").forEach(input => input.addEventListener("input", () => {
+    editingTimeWindows[+input.dataset.windowStart].start = input.value;
+  }));
+  el.querySelectorAll("[data-window-end]").forEach(input => input.addEventListener("input", () => {
+    editingTimeWindows[+input.dataset.windowEnd].end = input.value;
+  }));
+  el.querySelectorAll("[data-remove-window]").forEach(btn => btn.addEventListener("click", () => {
+    editingTimeWindows.splice(+btn.dataset.removeWindow, 1);
+    renderTimeWindowRows();
+  }));
+}
+
+document.getElementById("addTimeWindowBtn").addEventListener("click", () => {
+  editingTimeWindows.push({ start: "", end: "" });
+  renderTimeWindowRows();
+});
+
+// "7:00 AM – 10:00 AM, 1:00 PM – 5:00 PM" style summary of an event's duty
+// time windows. Falls back to the old single dutyStart/dutyEnd pair for
+// events created before split time windows existed.
+function formatTimeWindows(ev) {
+  const windows = Array.isArray(ev.timeWindows) && ev.timeWindows.length
+    ? ev.timeWindows
+    : (ev.dutyStart && ev.dutyEnd ? [{ start: ev.dutyStart, end: ev.dutyEnd }] : []);
+  return windows.map(w => `${formatTime12(w.start)} – ${formatTime12(w.end)}`).join(", ");
+}
 
 function renderEvents() {
   const el = document.getElementById("eventsList");
@@ -242,7 +287,7 @@ function renderEvents() {
       ${ev.maxVolunteers != null ? `<p class="muted">Max per day: ${ev.maxVolunteers}${ev.volunteersByDate ? ' · Total reservations: ' + Object.values(ev.volunteersByDate).reduce((s,a)=>s+a.length,0) : ''}</p>` : ""}
       ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
       ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
-      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
+        ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
 
