@@ -288,6 +288,35 @@ function minutesBetween(startHHMM, endHHMM) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
+// End-time options after `startTime`, capped so the shift never exceeds
+// the event's max hours (when set).
+function endTimeOptions(timeOptions, startTime, maxHours) {
+  const idx = timeOptions.indexOf(startTime);
+  if (idx === -1) return timeOptions.slice(1);
+  let after = timeOptions.slice(idx + 1);
+  if (maxHours != null) after = after.filter(t => minutesBetween(startTime, t) <= maxHours * 60);
+  return after;
+}
+
+// True if the member already has a timed reservation on `date` (on any
+// other event) whose [start, end) overlaps the newly requested range.
+function hasOverlappingReservation(date, startTime, endTime, excludeEventId) {
+  if (!startTime || !endTime) return false;
+  const newStart = combineDateTime(date, startTime).getTime();
+  const newEnd = combineDateTime(date, endTime).getTime();
+  for (const ev of allEvents) {
+    if (ev.id === excludeEventId) continue;
+    const list = (ev.volunteersByDate || {})[date] || [];
+    for (const entry of list) {
+      if (entry.uid !== currentUser.uid || !entry.startTime || !entry.endTime) continue;
+      const existStart = combineDateTime(date, entry.startTime).getTime();
+      const existEnd = combineDateTime(date, entry.endTime).getTime();
+      if (newStart < existEnd && existStart < newEnd) return true;
+    }
+  }
+  return false;
+}
+
 
 async function reserveDate(ev, date, startTime, endTime) {
   const entry = {
