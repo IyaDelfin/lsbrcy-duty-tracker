@@ -267,18 +267,64 @@ function combineDateTime(dateStr, hhmm) {
   return new Date(`${dateStr}T${hhmm}:00`);
 }
 
-// 30-minute-increment time options between an event's dutyStart and dutyEnd.
-function timeOptionsForEvent(ev) {
-  if (!ev.dutyStart || !ev.dutyEnd) return [];
+// This event's duty time windows as an array of {start, end} 24h "HH:MM"
+// strings — e.g. [{start:"07:00",end:"10:00"}, {start:"13:00",end:"17:00"}]
+// for a split shift. Falls back to the old single dutyStart/dutyEnd pair
+// for events created before split time windows existed.
+function timeWindowsForEvent(ev) {
+  if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) return ev.timeWindows;
+  if (ev.dutyStart && ev.dutyEnd) return [{ start: ev.dutyStart, end: ev.dutyEnd }];
+  return [];
+}
+
+// 30-minute-increment time options within a single {start,end} window.
+function timeOptionsForWindow(win) {
   const times = [];
-  let [h, m] = ev.dutyStart.split(":").map(Number);
-  const [endH, endM] = ev.dutyEnd.split(":").map(Number);
+  let [h, m] = win.start.split(":").map(Number);
+  const [endH, endM] = win.end.split(":").map(Number);
   while (h < endH || (h === endH && m <= endM)) {
     times.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     m += 30;
     if (m >= 60) { m -= 60; h += 1; }
   }
   return times;
+}
+
+// All start/end time options across every one of the event's windows —
+// e.g. two separate blocks of options for a 7–10 AM / 1–5 PM split shift.
+function timeOptionsForEvent(ev) {
+  return timeWindowsForEvent(ev).flatMap(timeOptionsForWindow);
+}
+
+// Valid shift-start options: every window's own times, minus each window's
+// final time (can't start a shift with nowhere left to go in that window).
+function startTimeOptionsForEvent(ev) {
+  return timeWindowsForEvent(ev).flatMap(w => timeOptionsForWindow(w).slice(0, -1));
+}
+
+// The specific window a given start time falls under, so end-time options
+// never cross into an unrelated block (e.g. a 9:30 AM start in a 7–10 AM
+// window offers 10:00 AM as the latest end, never jumping to a 1–5 PM block).
+function windowContaining(ev, time) {
+  return timeWindowsForEvent(ev).find(w => timeOptionsForWindow(w).includes(time));
+}
+
+// End-time options after `startTime`, confined to the same window as the
+// start and capped so the shift never exceeds the event's max hours.
+function endTimeOptions(ev, startTime) {
+  const win = windowContaining(ev, startTime);
+  if (!win) return [];
+  const winTimes = timeOptionsForWindow(win);
+  const idx = winTimes.indexOf(startTime);
+  let after = winTimes.slice(idx + 1);
+  if (ev.maxHours != null) after = after.filter(t => minutesBetween(startTime, t) <= ev.maxHours * 60);
+  return after;
+}
+
+// "7:00 AM – 10:00 AM, 1:00 PM – 5:00 PM" style summary of an event's
+// duty time windows, for display.
+function formatTimeWindows(ev) {
+  return timeWindowsForEvent(ev).map(w => `${formatTime12(w.start)} – ${formatTime12(w.end)}`).join(", ");
 }
 
 // Minutes between two "HH:MM" 24-hour time strings.
@@ -288,15 +334,6 @@ function minutesBetween(startHHMM, endHHMM) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
-// End-time options after `startTime`, capped so the shift never exceeds
-// the event's max hours (when set).
-function endTimeOptions(timeOptions, startTime, maxHours) {
-  const idx = timeOptions.indexOf(startTime);
-  if (idx === -1) return timeOptions.slice(1);
-  let after = timeOptions.slice(idx + 1);
-  if (maxHours != null) after = after.filter(t => minutesBetween(startTime, t) <= maxHours * 60);
-  return after;
-}
 
 // True if the member already has a timed reservation on `date` (on any
 // other event) whose [start, end) overlaps the newly requested range.
@@ -365,13 +402,13 @@ function renderEventDetails() {
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
 
-    // Today's start options drop any time that's already passed.
-    const startOptionsForDate = timeOptions.slice(0, -1).filter(t =>
+     // Today's start options drop any time that's already passed.
+    const startOptionsForDate = startTimeOptionsForEvent(ev).filter(t =>
       date !== today || combineDateTime(date, t).getTime() > Date.now()
     );
     const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
     const defaultStart = startOptionsForDate[0];
-    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(timeOptions, defaultStart, ev.maxHours) : timeOptions.slice(1);
+    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart) : [];
 
     const namesHtml = list.length
       ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "") + (v.startTime ? ` (${formatTime12(v.startTime)}–${formatTime12(v.endTime)})` : "")).join(", ")}</p>`
@@ -431,7 +468,7 @@ function renderEventDetails() {
       <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
       ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
       ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
-      ${ev.dutyStart && ev.dutyEnd ? `<p class="muted">Duty hours: ${formatTime12(ev.dutyStart)} – ${formatTime12(ev.dutyEnd)}</p>` : ""}
+      ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.maxPerMember != null ? `<p class="muted">Your reservations for this event: <strong style="color:${atMemberLimit ? 'var(--red)' : 'var(--text)'};">${myReservationCount} / ${ev.maxPerMember}</strong></p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
@@ -441,9 +478,10 @@ function renderEventDetails() {
     const date = startSel.dataset.startTime;
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     if (!endSel) return;
-    endSel.innerHTML = endTimeOptions(timeOptions, startSel.value, ev.maxHours)
+    endSel.innerHTML = endTimeOptions(ev, startSel.value)
       .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
   }));
+
 
   el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.reserveDate;
