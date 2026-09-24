@@ -583,14 +583,14 @@ async function exportRecordsToExcel(records, downloadWindow) {
     if (!byCommittee.has(committee)) byCommittee.set(committee, []);
     byCommittee.get(committee).push(r);
   }
-
   const committeeNames = [...byCommittee.keys()].sort((a, b) =>
     a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b)
   );
 
   for (const committee of committeeNames) {
-    const sheet = workbook.addWorksheet(sanitizeSheetName(committee));
+    const sheet = workbook.addWorksheet(uniqueSheetName(workbook, sanitizeSheetName(committee)));
     sheet.columns = columnDefs.map(c => ({ width: c.width }));
+
 
     const byEvent = new Map();
     for (const r of byCommittee.get(committee)) {
@@ -652,11 +652,25 @@ async function exportRecordsToExcel(records, downloadWindow) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-
 // Excel sheet names can't contain \ / ? * [ ] : and are capped at 31 chars.
 function sanitizeSheetName(name) {
   return String(name).replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet";
 }
+
+// Committee names come from free-text admin input, so two can collide once
+// sanitized/truncated (e.g. differing only by whitespace or casing) — that
+// causes ExcelJS to throw on a duplicate sheet name.
+function uniqueSheetName(workbook, base) {
+  let name = base;
+  let n = 2;
+  while (workbook.getWorksheet(name)) {
+    const suffix = ` (${n})`;
+    name = base.slice(0, 31 - suffix.length) + suffix;
+    n++;
+  }
+  return name;
+}
+
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
