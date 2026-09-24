@@ -544,15 +544,11 @@ function renderRecords() {
 
 document.getElementById("exportRecordsBtn").addEventListener("click", async () => {
   const btn = document.getElementById("exportRecordsBtn");
-  // Must open synchronously, in the same tick as the tap — iOS Safari
-  // silently blocks window/download actions once we're past an `await`.
-  const downloadWindow = window.open("", "_blank");
   btn.disabled = true;
   btn.textContent = "Exporting...";
   try {
-    await exportRecordsToExcel(getFilteredRecords(), downloadWindow);
+    await exportRecordsToExcel(getFilteredRecords());
   } catch (err) {
-    if (downloadWindow) downloadWindow.close();
     alert("Export failed: " + err.message);
   } finally {
     btn.disabled = false;
@@ -564,7 +560,7 @@ document.getElementById("exportRecordsBtn").addEventListener("click", async () =
 // One sheet per committee ("Unassigned" for records with no committee set),
 // and inside each sheet, one small table per event — ordered by that
 // event's earliest reserved date — rather than one long flat table.
-async function exportRecordsToExcel(records, downloadWindow) {
+async function exportRecordsToExcel(records) {
   const workbook = new ExcelJS.Workbook();
   const columnDefs = [
     { header: "Student No.", width: 14 },
@@ -631,33 +627,23 @@ async function exportRecordsToExcel(records, downloadWindow) {
     }
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
+   const buffer = await workbook.xlsx.writeBuffer();
   // The real Excel mime type, not generic octet-stream — Safari needs this
   // to show a proper "Download"/"Save to Files" prompt instead of a blank page.
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const filename = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-  if (downloadWindow && !downloadWindow.closed) {
-    // Build the download link *inside* the tab opened synchronously at
-    // tap-time and click it there — this is what actually triggers iOS
-    // Safari's named download prompt, rather than just navigating to a
-    // blob URL (which shows nothing visible at all).
-    const link = downloadWindow.document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    downloadWindow.document.body.appendChild(link);
-    link.click();
-  } else {
-    // Popup was blocked before we even got here — fall back to a normal
-    // same-tab download link.
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
+  // A single same-tab download link, built fresh and clicked immediately —
+  // dropped the earlier "open a blank tab up front" trick, since Safari's
+  // handling of repeated window.open() calls turned out to be what broke
+  // the *second* export, not something helping the first.
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
