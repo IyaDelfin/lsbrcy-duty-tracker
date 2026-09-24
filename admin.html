@@ -58,12 +58,11 @@
         <input id="evMaxHours" type="number" min="0" step="0.5" placeholder="Max hours for this event (optional)">
         <input id="evMaxVolunteers" type="number" min="0" step="1" placeholder="Max volunteers PER DAY (optional)">
         <input id="evMaxPerMember" type="number" min="0" step="1" placeholder="Max days one member can reserve for this event (optional)">
+        
+        <label class="muted" style="display:block;margin-bottom:4px;">Duty time windows (optional — leave blank to skip time-based clock-in; add more than one block for a split shift, e.g. 7–10 AM and 1–5 PM)</label>
+        <div id="evTimeWindows"></div>
+        <button type="button" class="secondary" id="addTimeWindowBtn" style="width:auto;margin-bottom:12px;">+ Add Time Block</button>
 
-        <label class="muted" style="display:block;margin-bottom:4px;">Event dates</label>
-        <div class="row">
-          <input id="evStartDate" type="date">
-          <input id="evEndDate" type="date">
-        </div>
 
         <label class="muted" style="display:block;margin-bottom:4px;">Duty time range (optional — leave blank to skip time-based clock-in)</label>
         <div class="row">
