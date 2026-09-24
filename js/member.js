@@ -119,12 +119,22 @@ function dateRange(start, end) {
 
 function findTodaysReservation() {
   const today = todayStr();
+  const candidates = [];
   for (const ev of allEvents) {
     const list = (ev.volunteersByDate || {})[today] || [];
     const entry = list.find(v => v.uid === currentUser.uid);
-    if (entry) return { event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null };
+    if (!entry) continue;
+    // Skip a reservation already completed today (clocked out) — otherwise
+    // the card gets stuck re-offering a finished shift and can never move
+    // on to a different event reserved for the same day.
+    const alreadyDone = myRecords.some(r => r.eventId === ev.id && r.date === today && r.timeOut != null);
+    if (alreadyDone) continue;
+    candidates.push({ event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null });
   }
-  return null;
+  if (!candidates.length) return null;
+  // Prefer whichever event you currently have selected in the list, if
+  // it's among today's still-open reservations.
+  return candidates.find(c => c.event.id === selectedEventId) || candidates[0];
 }
 
 // Monday-to-Sunday range containing `date` (defaults to today).
@@ -299,6 +309,9 @@ async function cancelReservation(ev, date, entry) {
   });
 }
 
+
+
+
 // ---------- EVENT DETAILS (per-date reserve cards) ----------
 function renderEventDetails() {
   const el = document.getElementById("eventDetails");
@@ -311,6 +324,7 @@ function renderEventDetails() {
   const hasTimeRange = timeOptions.length > 1;
   const myReservationCount = memberReservationCountForEvent(ev);
   const atMemberLimit = ev.maxPerMember != null && myReservationCount >= ev.maxPerMember;
+  const today = todayStr();
 
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
@@ -319,6 +333,14 @@ function renderEventDetails() {
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+
+    // Today's start options drop any time that's already passed.
+    const startOptionsForDate = timeOptions.slice(0, -1).filter(t =>
+      date !== today || combineDateTime(date, t).getTime() > Date.now()
+    );
+    const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
+    const defaultStart = startOptionsForDate[0];
+    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(timeOptions, defaultStart, ev.maxHours) : timeOptions.slice(1);
 
     const namesHtml = list.length
       ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "") + (v.startTime ? ` (${formatTime12(v.startTime)}–${formatTime12(v.endTime)})` : "")).join(", ")}</p>`
@@ -336,17 +358,19 @@ function renderEventDetails() {
       actionHtml = `<span class="badge red">Full</span>`;
     } else if (atMemberLimit) {
       actionHtml = `<span class="badge red">Limit Reached</span>`;
+    } else if (pastCutoffToday) {
+      actionHtml = `<span class="badge red">Time Passed</span>`;
     } else {
       actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
     }
 
-    const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && hasTimeRange) ? `
+    const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && !pastCutoffToday && hasTimeRange) ? `
         <div class="row" style="margin-top:8px;">
           <select data-start-time="${date}">
-            ${timeOptions.slice(0, -1).map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
+            ${startOptionsForDate.map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
           </select>
           <select data-end-time="${date}">
-            ${timeOptions.slice(1).map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
+            ${endOptionsForDefaultStart.map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
           </select>
         </div>` : "";
 
@@ -378,15 +402,34 @@ function renderEventDetails() {
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
+  el.querySelectorAll('[data-start-time]').forEach(startSel => startSel.addEventListener("change", () => {
+    const date = startSel.dataset.startTime;
+    const endSel = el.querySelector(`[data-end-time="${date}"]`);
+    if (!endSel) return;
+    endSel.innerHTML = endTimeOptions(timeOptions, startSel.value, ev.maxHours)
+      .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
+  }));
+
   el.querySelectorAll('[data-reserve-date]').forEach(btn => btn.addEventListener("click", () => {
     const date = btn.dataset.reserveDate;
     const startSel = el.querySelector(`[data-start-time="${date}"]`);
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     const startTime = startSel ? startSel.value : null;
     const endTime = endSel ? endSel.value : null;
-    if (startSel && endSel && minutesBetween(startTime, endTime) < 60) {
-      alert("Please select a shift of at least 1 hour (60 minutes).");
-      return;
+    if (startSel && endSel) {
+      const duration = minutesBetween(startTime, endTime);
+      if (duration < 60) {
+        alert("Please select a shift of at least 1 hour (60 minutes).");
+        return;
+      }
+      if (ev.maxHours != null && duration > ev.maxHours * 60) {
+        alert(`This event's max shift length is ${ev.maxHours} hour${ev.maxHours === 1 ? "" : "s"}.`);
+        return;
+      }
+      if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
+        alert("You already have a reservation that overlaps with this time on this date.");
+        return;
+      }
     }
     reserveDate(ev, date, startTime, endTime);
   }));
@@ -398,6 +441,11 @@ function renderEventDetails() {
     if (entry) cancelReservation(ev, date, entry);
   }));
 }
+
+
+
+
+
 // ---------- CLOCK IN / OUT ----------
 function renderClockCard() {
   const btn = document.getElementById("clockBtn");
