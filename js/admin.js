@@ -632,25 +632,35 @@ async function exportRecordsToExcel(records, downloadWindow) {
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/octet-stream" });
+  // The real Excel mime type, not generic octet-stream — Safari needs this
+  // to show a proper "Download"/"Save to Files" prompt instead of a blank page.
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
+  const filename = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-  if (downloadWindow) {
-    // Reuses the tab opened synchronously at tap-time — this is what
-    // actually gets past iOS Safari's popup/download blocking.
-    downloadWindow.location.href = url;
+  if (downloadWindow && !downloadWindow.closed) {
+    // Build the download link *inside* the tab opened synchronously at
+    // tap-time and click it there — this is what actually triggers iOS
+    // Safari's named download prompt, rather than just navigating to a
+    // blob URL (which shows nothing visible at all).
+    const link = downloadWindow.document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    downloadWindow.document.body.appendChild(link);
+    link.click();
   } else {
     // Popup was blocked before we even got here — fall back to a normal
     // same-tab download link.
     const a = document.createElement("a");
     a.href = url;
-    a.download = `LSBRCY-Duty-Records-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
   }
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
 
 // Excel sheet names can't contain \ / ? * [ ] : and are capped at 31 chars.
 function sanitizeSheetName(name) {
