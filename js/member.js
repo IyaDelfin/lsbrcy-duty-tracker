@@ -361,7 +361,9 @@ function renderEventDetails() {
     const myEntry = list.find(v => v.uid === currentUser.uid);
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
+    const isPastDate = date < today; // "YYYY-MM-DD" strings compare correctly lexically
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+
 
     // Today's start options drop any time that's already passed.
     const startOptionsForDate = timeOptions.slice(0, -1).filter(t =>
@@ -387,13 +389,17 @@ function renderEventDetails() {
       actionHtml = `<span class="badge red">Full</span>`;
     } else if (atMemberLimit) {
       actionHtml = `<span class="badge red">Limit Reached</span>`;
+    } else if (isPastDate) {
+      actionHtml = `<span class="badge red">Past</span>`;
     } else if (pastCutoffToday) {
       actionHtml = `<span class="badge red">Time Passed</span>`;
     } else {
       actionHtml = `<button class="secondary" data-reserve-date="${date}" style="padding:6px 14px;">Reserve</button>`;
     }
 
-    const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && !pastCutoffToday && hasTimeRange) ? `
+    const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && !isPastDate && !pastCutoffToday && hasTimeRange) ? `
+
+        
         <div class="row" style="margin-top:8px;">
           <select data-start-time="${date}">
             ${startOptionsForDate.map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
