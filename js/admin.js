@@ -372,13 +372,17 @@ function renderMembers() {
     renderMembers();
   }));
 
-  let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
+    let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
   if (memberSearchTerm) {
     filtered = filtered.filter(m =>
       (m.fullName || m.username || "").toLowerCase().includes(memberSearchTerm) ||
       (m.studentNo || "").toLowerCase().includes(memberSearchTerm)
     );
   }
+  filtered = [...filtered].sort((a, b) =>
+    (a.fullName || a.username || "").localeCompare(b.fullName || b.username || "")
+  );
+
 
   const el = document.getElementById("membersList");
   el.innerHTML = `
