@@ -334,23 +334,26 @@ function minutesBetween(startHHMM, endHHMM) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
-// Builds 1-hour blocks between an event's dutyStart and dutyEnd
-// (e.g. 7:00–8:00, 8:00–9:00, ...) for the hour-by-hour slots table.
+// Builds 1-hour blocks across all of an event's duty time windows
+// (e.g. 7:00–8:00, 8:00–9:00, ..., then 1:00–2:00, 2:00–3:00, ... for a
+// split shift) for the hour-by-hour slots table.
 function hourSlotsForEvent(ev) {
-  if (!ev.dutyStart || !ev.dutyEnd) return [];
   const slots = [];
-  let [h, m] = ev.dutyStart.split(":").map(Number);
-  const [endH, endM] = ev.dutyEnd.split(":").map(Number);
-  while (h < endH || (h === endH && m < endM)) {
-    const start = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    let nh = h + 1, nm = m;
-    if (nh > endH || (nh === endH && nm > endM)) { nh = endH; nm = endM; }
-    const end = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
-    slots.push({ start, end });
-    h = nh; m = nm;
+  for (const win of timeWindowsForEvent(ev)) {
+    let [h, m] = win.start.split(":").map(Number);
+    const [endH, endM] = win.end.split(":").map(Number);
+    while (h < endH || (h === endH && m < endM)) {
+      const start = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      let nh = h + 1, nm = m;
+      if (nh > endH || (nh === endH && nm > endM)) { nh = endH; nm = endM; }
+      const end = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+      slots.push({ start, end });
+      h = nh; m = nm;
+    }
   }
   return slots;
 }
+
 
 // Renders the per-date volunteer list as an hour-by-hour slots table
 // (time block header row, then one row per volunteer whose reserved
@@ -367,8 +370,11 @@ function renderHourSlotTable(ev, list) {
     <table style="margin-top:6px;">
       ${slots.map(slot => {
         const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+        const capLabel = ev.maxVolunteers != null
+          ? ` — ${inSlot.length}/${ev.maxVolunteers}${inSlot.length >= ev.maxVolunteers ? ' (Full)' : ''}`
+          : "";
         return `
-          <tr><th colspan="3" style="text-align:left;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</th></tr>
+          <tr><th colspan="3" style="text-align:left;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}${capLabel}</th></tr>
           ${inSlot.length
             ? inSlot.map(v => `<tr><td>${escapeHtml(v.fullName || "")}</td><td>${escapeHtml(v.studentNo || "")}</td><td>${escapeHtml(v.committee || "")}</td></tr>`).join("")
             : `<tr><td colspan="3" class="muted">No one yet.</td></tr>`}
@@ -377,11 +383,22 @@ function renderHourSlotTable(ev, list) {
     </table>`;
 }
 
-
+// True if every hour this [startTime, endTime) range touches still has
+// room under the event's max-volunteers-per-hour cap (no cap set = always ok).
+function hourCapacityOk(ev, list, startTime, endTime) {
+  if (ev.maxVolunteers == null) return true;
+  for (const slot of hourSlotsForEvent(ev)) {
+    if (!(startTime < slot.end && endTime > slot.start)) continue;
+    const count = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start).length;
+    if (count >= ev.maxVolunteers) return false;
+  }
+  return true;
+}
 
 // True if the member already has a timed reservation on `date` (on any
 // other event) whose [start, end) overlaps the newly requested range.
 function hasOverlappingReservation(date, startTime, endTime, excludeEventId) {
+
   if (!startTime || !endTime) return false;
   const newStart = combineDateTime(date, startTime).getTime();
   const newEnd = combineDateTime(date, endTime).getTime();
@@ -440,7 +457,8 @@ function renderEventDetails() {
 
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
-    const full = ev.maxVolunteers != null && list.length >= ev.maxVolunteers;
+    const full = ev.maxVolunteers != null && !hasTimeRange && list.length >= ev.maxVolunteers;
+
     const myEntry = list.find(v => v.uid === currentUser.uid);
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
@@ -496,7 +514,8 @@ function renderEventDetails() {
         <div class="row" style="align-items:center;">
           <div>
             <strong>${dateLabel}</strong>
-            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
+            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
+
           </div>
           ${actionHtml}
         </div>
@@ -544,12 +563,18 @@ function renderEventDetails() {
         alert(`This event's max shift length is ${ev.maxHours} hour${ev.maxHours === 1 ? "" : "s"}.`);
         return;
       }
-      if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
+            if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
         alert("You already have a reservation that overlaps with this time on this date.");
+        return;
+      }
+      const dateList = (ev.volunteersByDate || {})[date] || [];
+      if (!hourCapacityOk(ev, dateList, startTime, endTime)) {
+        alert(`One or more hours in this range are already full (max ${ev.maxVolunteers} per hour).`);
         return;
       }
     }
     reserveDate(ev, date, startTime, endTime);
+
   }));
 
   el.querySelectorAll('[data-cancel-date]').forEach(btn => btn.addEventListener("click", () => {
