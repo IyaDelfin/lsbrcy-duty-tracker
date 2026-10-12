@@ -334,6 +334,50 @@ function minutesBetween(startHHMM, endHHMM) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
+// Builds 1-hour blocks between an event's dutyStart and dutyEnd
+// (e.g. 7:00–8:00, 8:00–9:00, ...) for the hour-by-hour slots table.
+function hourSlotsForEvent(ev) {
+  if (!ev.dutyStart || !ev.dutyEnd) return [];
+  const slots = [];
+  let [h, m] = ev.dutyStart.split(":").map(Number);
+  const [endH, endM] = ev.dutyEnd.split(":").map(Number);
+  while (h < endH || (h === endH && m < endM)) {
+    const start = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    let nh = h + 1, nm = m;
+    if (nh > endH || (nh === endH && nm > endM)) { nh = endH; nm = endM; }
+    const end = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+    slots.push({ start, end });
+    h = nh; m = nm;
+  }
+  return slots;
+}
+
+// Renders the per-date volunteer list as an hour-by-hour slots table
+// (time block header row, then one row per volunteer whose reserved
+// range overlaps that hour). Falls back to a flat name list for events
+// with no duty-time range set.
+function renderHourSlotTable(ev, list) {
+  const slots = hourSlotsForEvent(ev);
+  if (!slots.length) {
+    return list.length
+      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
+      : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
+  }
+  return `
+    <table style="margin-top:6px;">
+      ${slots.map(slot => {
+        const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+        return `
+          <tr><th colspan="3" style="text-align:left;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</th></tr>
+          ${inSlot.length
+            ? inSlot.map(v => `<tr><td>${escapeHtml(v.fullName || "")}</td><td>${escapeHtml(v.studentNo || "")}</td><td>${escapeHtml(v.committee || "")}</td></tr>`).join("")
+            : `<tr><td colspan="3" class="muted">No one yet.</td></tr>`}
+        `;
+      }).join("")}
+    </table>`;
+}
+
+
 
 // True if the member already has a timed reservation on `date` (on any
 // other event) whose [start, end) overlaps the newly requested range.
@@ -359,7 +403,8 @@ async function reserveDate(ev, date, startTime, endTime) {
   const entry = {
     uid: currentUser.uid,
     fullName: myProfile.fullName || myProfile.username,
-    studentNo: myProfile.studentNo || ""
+    studentNo: myProfile.studentNo || "",
+    committee: myProfile.committee || ""
   };
   if (startTime) entry.startTime = startTime;
   if (endTime) entry.endTime = endTime;
@@ -368,6 +413,7 @@ async function reserveDate(ev, date, startTime, endTime) {
     [`volunteersByDate.${date}`]: arrayUnion(entry)
   });
 }
+
 
 async function cancelReservation(ev, date, entry) {
   await updateDoc(doc(db, "events", ev.id), {
@@ -409,10 +455,9 @@ function renderEventDetails() {
     const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
     const defaultStart = startOptionsForDate[0];
     const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart) : [];
+    
+    const namesHtml = renderHourSlotTable(ev, list);
 
-    const namesHtml = list.length
-      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "") + (v.startTime ? ` (${formatTime12(v.startTime)}–${formatTime12(v.endTime)})` : "")).join(", ")}</p>`
-      : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
 
     let actionHtml;
     if (alreadyReserved) {
