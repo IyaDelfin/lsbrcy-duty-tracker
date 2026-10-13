@@ -473,8 +473,8 @@ function renderMemberDetail() {
                     <input type="time" data-edit-timein="${r.id}" value="${r.timeIn ? toTimeInputValue(r.timeIn) : ''}">
                     <input type="time" data-edit-timeout="${r.id}" value="${r.timeOut ? toTimeInputValue(r.timeOut) : ''}">
                   </div>
-                  <textarea data-edit-note="${r.id}" placeholder="Note (e.g. Noted by...)" style="width:100%;min-height:60px;margin:8px 0;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
-
+                  <input type="text" data-edit-addedby="${r.id}" value="${escapeHtml(r.addedBy || '')}" placeholder="Added/verified by (your name)">
+                  <textarea data-edit-note="${r.id}" placeholder="Note (e.g. Noted by...)" style="width:100%;min-height:60px;margin:8px 0;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;">${escapeHtml(r.note || '')}</textarea>
                   <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0 0 10px;">
                     <input type="checkbox" data-edit-late="${r.id}" ${r.late ? 'checked' : ''} style="width:auto;margin:0;"> Mark as Late
                   </label>
@@ -483,10 +483,11 @@ function renderMemberDetail() {
                 </div>
               ` : `
                 <div style="padding:12px;font-size:.85rem;">
-                  <p class="muted" style="margin:0 0 4px;">PIC: ${escapeHtml(r.pic || '–')} · Verified: ${r.verified ? 'Yes' : 'No'}${r.addedByAdmin ? ' · Added manually by admin' : ''}</p>
+                  <p class="muted" style="margin:0 0 4px;">PIC: ${escapeHtml(r.pic || '–')} · Verified: ${r.verified ? 'Yes' : 'No'}${r.addedBy ? ` · Added manually by ${escapeHtml(r.addedBy)}` : (r.addedByAdmin ? ' · Added manually by admin' : '')}</p>
                   <p class="muted" style="margin:0 0 4px;">Note: ${r.note ? escapeHtml(r.note) : '<em>No note</em>'}</p>
                   <p class="muted" style="margin:0;">Logged: ${r.createdAt ? new Date(r.createdAt).toLocaleString() : '–'}</p>
                 </div>
+
               `}
             </td>
           </tr>` : ''}`;
@@ -501,8 +502,9 @@ function renderMemberDetail() {
         <input id="manualRecordDate" type="date">
         <input id="manualRecordTimeIn" type="time" placeholder="Time in">
       </div>
-      <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
-      <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="width:100%;min-height:50px;margin-bottom:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
+        <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
+        <input id="manualRecordAddedBy" type="text" placeholder="Added/verified by (your name)">
+        <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="width:100%;min-height:50px;margin-bottom:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
       <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
         <input type="checkbox" id="manualRecordLate" style="width:auto;margin:0;"> Mark as Late
       </label>
@@ -541,6 +543,7 @@ function renderMemberDetail() {
     const date = el.querySelector(`[data-edit-date="${id}"]`).value;
     const timeInStr = el.querySelector(`[data-edit-timein="${id}"]`).value;
     const timeOutStr = el.querySelector(`[data-edit-timeout="${id}"]`).value;
+    const addedBy = el.querySelector(`[data-edit-addedby="${id}"]`).value.trim();
     const note = el.querySelector(`[data-edit-note="${id}"]`).value.trim();
     const late = el.querySelector(`[data-edit-late="${id}"]`).checked;
 
@@ -548,10 +551,11 @@ function renderMemberDetail() {
     const timeOut = date && timeOutStr ? new Date(`${date}T${timeOutStr}:00`).getTime() : null;
     const hours = (timeIn != null && timeOut != null) ? +((timeOut - timeIn) / 3600000).toFixed(2) : null;
 
-    await updateDoc(doc(db, "dutyRecords", id), { date, timeIn, timeOut, hours, note, late });
+    await updateDoc(doc(db, "dutyRecords", id), { date, timeIn, timeOut, hours, addedBy, note, late });
     editingRecordId = null;
     renderMemberDetail();
   }));
+
 
   const addManualBtn = document.getElementById("addManualRecordBtn");
   if (addManualBtn) {
@@ -561,8 +565,10 @@ function renderMemberDetail() {
       const date = document.getElementById("manualRecordDate").value;
       const timeInStr = document.getElementById("manualRecordTimeIn").value || "08:00";
       const hoursRaw = document.getElementById("manualRecordHours").value.trim();
+      const addedBy = document.getElementById("manualRecordAddedBy").value.trim();
       const note = document.getElementById("manualRecordNote").value.trim();
       const late = document.getElementById("manualRecordLate").checked;
+
 
       if (!ev || !date || hoursRaw === "") {
         alert("Please select an event, a date, and enter hours rendered.");
@@ -582,10 +588,11 @@ function renderMemberDetail() {
         shift: new Date(timeIn).getHours() < 12 ? "AM" : "PM",
         shiftStart: null,
         shiftEnd: null,
-        date,
+        date,        
         timeIn,
         timeOut,
         hours,
+        addedBy,
         note,
         pic: ev.pic || "",
         verified: true,
@@ -597,6 +604,7 @@ function renderMemberDetail() {
       document.getElementById("manualRecordDate").value = "";
       document.getElementById("manualRecordTimeIn").value = "";
       document.getElementById("manualRecordHours").value = "";
+      document.getElementById("manualRecordAddedBy").value = "";
       document.getElementById("manualRecordNote").value = "";
       document.getElementById("manualRecordLate").checked = false;
     });
