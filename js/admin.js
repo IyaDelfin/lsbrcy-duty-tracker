@@ -42,6 +42,11 @@ let evStatusFilter = "active";
 let evCategoryFilter = "all";
 let editingEventId = null;
 let editingTimeWindows = [];
+let expandedRecordId = null;    // duty record row expanded to show full details in Member Detail
+let editingRecordId = null;     // duty record row currently being edited in Member Detail
+
+
+
 
 
 
@@ -441,18 +446,50 @@ function renderMemberDetail() {
       <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
       <p class="muted">Early Out Count: <strong style="color:var(--blue);">${records.filter(r => r.earlyOut).length}</strong></p>
       <p class="muted">No Show Count: <strong style="color:var(--red);">${records.filter(r => r.noShow).length}</strong></p>
+      <p class="muted" style="font-size:.75rem;">Tap a row to see full details. Use Edit to change the time or note.</p>
       <table>
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th></th></tr>
-        ${records.map(r => `
-          <tr>
+        ${records.map(r => {
+          const isExpanded = expandedRecordId === r.id;
+          const isEditing = editingRecordId === r.id;
+          return `
+          <tr data-toggle-record="${r.id}" style="cursor:pointer;${isExpanded ? 'background:rgba(255,255,255,.03);' : ''}">
             <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : "–"}</td>
+            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
             <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
             <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-            <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>          </tr>`).join("")}
+            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}${r.note ? " <span class='badge blue'>Note</span>" : ""}</td>
+            <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>
+          </tr>
+          ${isExpanded ? `
+          <tr>
+            <td colspan="8" style="background:rgba(255,255,255,.03);padding:0;">
+              ${isEditing ? `
+                <div style="padding:12px;">
+                  <div class="row">
+                    <input type="date" data-edit-date="${r.id}" value="${r.date || ''}">
+                    <input type="time" data-edit-timein="${r.id}" value="${r.timeIn ? toTimeInputValue(r.timeIn) : ''}">
+                    <input type="time" data-edit-timeout="${r.id}" value="${r.timeOut ? toTimeInputValue(r.timeOut) : ''}">
+                  </div>
+                  <textarea data-edit-note="${r.id}" placeholder="Note (e.g. Noted by...)" style="width:100%;min-height:60px;margin:8px 0;">${escapeHtml(r.note || '')}</textarea>
+                  <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0 0 10px;">
+                    <input type="checkbox" data-edit-late="${r.id}" ${r.late ? 'checked' : ''} style="width:auto;margin:0;"> Mark as Late
+                  </label>
+                  <button class="primary" data-action="save-record" data-id="${r.id}" style="padding:6px 14px;font-size:.8rem;width:auto;">Save</button>
+                  <button class="secondary" data-action="cancel-edit-record" data-id="${r.id}" style="padding:6px 14px;font-size:.8rem;width:auto;">Cancel</button>
+                </div>
+              ` : `
+                <div style="padding:12px;font-size:.85rem;">
+                  <p class="muted" style="margin:0 0 4px;">PIC: ${escapeHtml(r.pic || '–')} · Verified: ${r.verified ? 'Yes' : 'No'}${r.addedByAdmin ? ' · Added manually by admin' : ''}</p>
+                  <p class="muted" style="margin:0 0 4px;">Note: ${r.note ? escapeHtml(r.note) : '<em>No note</em>'}</p>
+                  <p class="muted" style="margin:0;">Logged: ${r.createdAt ? new Date(r.createdAt).toLocaleString() : '–'}</p>
+                </div>
+              `}
+            </td>
+          </tr>` : ''}`;
+        }).join("")}
       </table>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
       <hr class="section-divider">
@@ -464,6 +501,7 @@ function renderMemberDetail() {
         <input id="manualRecordTimeIn" type="time" placeholder="Time in">
       </div>
       <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
+      <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="width:100%;min-height:50px;margin-bottom:12px;"></textarea>
       <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
         <input type="checkbox" id="manualRecordLate" style="width:auto;margin:0;"> Mark as Late
       </label>
@@ -472,17 +510,46 @@ function renderMemberDetail() {
 
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberId = null;
+    expandedRecordId = null;
+    editingRecordId = null;
     renderMemberDetail();
   });
 
-  el.querySelectorAll('[data-action="edit-record"]').forEach(btn => btn.addEventListener("click", async () => {
-    const r = allRecords.find(x => x.id === btn.dataset.id);
-    if (!r) return;
-    const hoursInput = prompt("Hours rendered:", r.hours != null ? r.hours : "");
-    if (hoursInput === null) return;
-    const hours = hoursInput.trim() === "" ? null : parseFloat(hoursInput);
-    const late = confirm("Mark this record as LATE?\n\nOK = Late · Cancel = Not late");
-    await updateDoc(doc(db, "dutyRecords", r.id), { hours, late });
+  el.querySelectorAll('[data-toggle-record]').forEach(row => row.addEventListener("click", (e) => {
+    if (e.target.closest('[data-action="edit-record"]')) return;
+    const id = row.dataset.toggleRecord;
+    if (editingRecordId === id) return; // don't collapse out from under an open edit form
+    expandedRecordId = expandedRecordId === id ? null : id;
+    renderMemberDetail();
+  }));
+
+  el.querySelectorAll('[data-action="edit-record"]').forEach(btn => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    editingRecordId = btn.dataset.id;
+    expandedRecordId = btn.dataset.id;
+    renderMemberDetail();
+  }));
+
+  el.querySelectorAll('[data-action="cancel-edit-record"]').forEach(btn => btn.addEventListener("click", () => {
+    editingRecordId = null;
+    renderMemberDetail();
+  }));
+
+  el.querySelectorAll('[data-action="save-record"]').forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.id;
+    const date = el.querySelector(`[data-edit-date="${id}"]`).value;
+    const timeInStr = el.querySelector(`[data-edit-timein="${id}"]`).value;
+    const timeOutStr = el.querySelector(`[data-edit-timeout="${id}"]`).value;
+    const note = el.querySelector(`[data-edit-note="${id}"]`).value.trim();
+    const late = el.querySelector(`[data-edit-late="${id}"]`).checked;
+
+    const timeIn = date && timeInStr ? new Date(`${date}T${timeInStr}:00`).getTime() : null;
+    const timeOut = date && timeOutStr ? new Date(`${date}T${timeOutStr}:00`).getTime() : null;
+    const hours = (timeIn != null && timeOut != null) ? +((timeOut - timeIn) / 3600000).toFixed(2) : null;
+
+    await updateDoc(doc(db, "dutyRecords", id), { date, timeIn, timeOut, hours, note, late });
+    editingRecordId = null;
+    renderMemberDetail();
   }));
 
   const addManualBtn = document.getElementById("addManualRecordBtn");
@@ -493,6 +560,7 @@ function renderMemberDetail() {
       const date = document.getElementById("manualRecordDate").value;
       const timeInStr = document.getElementById("manualRecordTimeIn").value || "08:00";
       const hoursRaw = document.getElementById("manualRecordHours").value.trim();
+      const note = document.getElementById("manualRecordNote").value.trim();
       const late = document.getElementById("manualRecordLate").checked;
 
       if (!ev || !date || hoursRaw === "") {
@@ -517,6 +585,7 @@ function renderMemberDetail() {
         timeIn,
         timeOut,
         hours,
+        note,
         pic: ev.pic || "",
         verified: true,
         late,
@@ -527,6 +596,7 @@ function renderMemberDetail() {
       document.getElementById("manualRecordDate").value = "";
       document.getElementById("manualRecordTimeIn").value = "";
       document.getElementById("manualRecordHours").value = "";
+      document.getElementById("manualRecordNote").value = "";
       document.getElementById("manualRecordLate").checked = false;
     });
   }
@@ -721,9 +791,17 @@ function uniqueSheetName(workbook, base) {
 }
 
 
+// Converts a stored timestamp (ms) to "HH:MM" in local time, for
+// pre-filling a <input type="time"> when editing a duty record.
+function toTimeInputValue(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
+
 
 // Formats a 24-hour "HH:MM" string as "H:MM AM/PM", using "NN" for noon
 // and "MN" for midnight (Philippine duty-roster convention).
