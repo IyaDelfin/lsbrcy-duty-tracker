@@ -375,34 +375,31 @@ function renderHourSlotTable(ev, list) {
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
   }
   return `
-    <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
       ${slots.map((slot, i) => {
         const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
         const isFull = ev.maxVolunteers != null && inSlot.length >= ev.maxVolunteers;
-        // Each clock hour (two 30-min slots) shares one color, alternating
-        // red/blue hour by hour, so 8:00-8:30 and 8:30-9:00 match, then
-        // 9:00-9:30 and 9:30-10:00 switch to the other color.
+        // Each clock hour (two 30-min slots) shares one accent color,
+        // alternating blue/red hour by hour — a thin left bar + faint tint,
+        // not a solid block, so it reads as a cue rather than a wall of color.
         const hourGroup = Math.floor(i / 2);
-        const isRedHour = hourGroup % 2 === 0;
-        const accentBg = isRedHour ? 'rgba(239,68,68,.55)' : 'rgba(59,130,246,.55)';
-        const accentBorder = isRedHour ? 'rgba(239,68,68,.7)' : 'rgba(59,130,246,.7)';
+        const accent = hourGroup % 2 === 0 ? '59,130,246' : '239,68,68'; // blue / red, as rgb triples
         const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}` : `${inSlot.length}`;
         return `
-          <div style="border:1px solid ${accentBorder};border-radius:8px;overflow:hidden;">
-            <div style="background:${accentBg};padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">
-              <strong style="color:#fff;font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
-              <span style="font-size:.75rem;${isFull ? 'color:var(--red);font-weight:800;background:#fff;border-radius:4px;padding:1px 6px;' : 'color:#fff;font-weight:600;'}">${isFull ? '⚠ ' : ''}${capLabel}</span>
+          <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</span>
+              <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
-            <div style="padding:6px 12px;">
-              ${inSlot.length
-                ? inSlot.map(v => `
-                    <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:.82rem;border-top:1px solid var(--border);">
-                      <span>${escapeHtml(v.fullName || "")}</span>
-                      <span class="muted">${escapeHtml(v.studentNo || "")}</span>
-                      <span class="muted">${escapeHtml(v.committee || "")}</span>
-                    </div>`).join("")
-                : `<p class="muted" style="margin:2px 0;font-size:.78rem;">No one yet.</p>`}
-            </div>
+            ${inSlot.length ? `
+              <div style="margin-top:6px;border-top:1px solid var(--border);">
+                ${inSlot.map(v => `
+                  <div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:.8rem;border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text);">${escapeHtml(v.fullName || "")}</span>
+                    <span class="muted">${escapeHtml(v.studentNo || "")}</span>
+                    <span class="muted">${escapeHtml(v.committee || "")}</span>
+                  </div>`).join("")}
+              </div>` : `<p class="muted" style="margin:6px 0 0;font-size:.76rem;">No one yet.</p>`}
           </div>`;
       }).join("")}
     </div>`;
