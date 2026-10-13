@@ -295,7 +295,6 @@ function renderEvents() {
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${ev.maxVolunteers != null ? `<p class="muted">Max per day: ${ev.maxVolunteers}${ev.volunteersByDate ? ' · Total reservations: ' + Object.values(ev.volunteersByDate).reduce((s,a)=>s+a.length,0) : ''}</p>` : ""}
       ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
-      ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
         ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
