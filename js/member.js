@@ -396,7 +396,6 @@ function renderHourSlotTable(ev, list) {
                 ${inSlot.map(v => `
                   <div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:.8rem;border-bottom:1px solid var(--border);">
                     <span style="color:var(--text);">${escapeHtml(v.fullName || "")}</span>
-                    <span class="muted">${escapeHtml(v.studentNo || "")}</span>
                     <span class="muted">${escapeHtml(v.committee || "")}</span>
                   </div>`).join("")}
               </div>` : `<p class="muted" style="margin:6px 0 0;font-size:.76rem;">No one yet.</p>`}
