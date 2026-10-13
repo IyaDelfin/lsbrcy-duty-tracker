@@ -376,15 +376,18 @@ function renderHourSlotTable(ev, list) {
   }
   return `
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
-      ${slots.map(slot => {
+      ${slots.map((slot, i) => {
         const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
         const isFull = ev.maxVolunteers != null && inSlot.length >= ev.maxVolunteers;
-        const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}${isFull ? ' · Full' : ''}` : `${inSlot.length}`;
+        const accent = i % 2 === 0 ? 'var(--blue)' : 'var(--red)';
+        const accentBg = i % 2 === 0 ? 'rgba(59,130,246,.15)' : 'rgba(239,68,68,.15)';
+        const accentBorder = i % 2 === 0 ? 'rgba(59,130,246,.35)' : 'rgba(239,68,68,.35)';
+        const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}` : `${inSlot.length}`;
         return `
-          <div style="border:1px solid rgba(59,130,246,.35);border-radius:8px;overflow:hidden;">
-            <div style="background:rgba(59,130,246,.15);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">
-              <strong style="color:var(--blue);font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
-              <span style="font-size:.75rem;color:${isFull ? 'var(--red)' : 'var(--blue)'};font-weight:600;">${capLabel}</span>
+          <div style="border:1px solid ${accentBorder};border-radius:8px;overflow:hidden;">
+            <div style="background:${accentBg};padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">
+              <strong style="color:${accent};font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
+              <span style="font-size:.75rem;color:${accent};${isFull ? 'font-weight:800;' : 'font-weight:600;'}">${isFull ? '⚠ ' : ''}${capLabel}</span>
             </div>
             <div style="padding:6px 12px;">
               ${inSlot.length
