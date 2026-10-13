@@ -44,6 +44,7 @@ let editingEventId = null;
 let editingTimeWindows = [];
 let expandedRecordId = null;    // duty record row expanded to show full details in Member Detail
 let editingRecordId = null;     // duty record row currently being edited in Member Detail
+let expandedCategoryDate = null; // date card expanded in the admin's read-only Overview event view
 
 
 
@@ -120,12 +121,14 @@ function renderCategoryEvents() {
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
 
-  
-  listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
+
+    listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
     viewedCategoryEventId = card.dataset.viewEv;
+    expandedCategoryDate = null;
     renderCategoryEvents();
     renderCategoryEventDetails();
   }));
+
 
   renderCategoryEventDetails();
 }
@@ -136,7 +139,30 @@ function renderCategoryEventDetails() {
   const ev = allEvents.find(e => e.id === viewedCategoryEventId);
   if (!ev) { el.innerHTML = ""; return; }
 
-    el.innerHTML = `
+  const volunteersByDate = ev.volunteersByDate || {};
+  const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+  const hasTimeRange = timeWindowsForEvent(ev).length > 0;
+
+  const datesHtml = dates.map(date => {
+    const list = volunteersByDate[date] || [];
+    const isExpanded = expandedCategoryDate === date;
+    const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const namesHtml = renderHourSlotTable(ev, list);
+
+    return `
+      <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
+        <div class="row" style="align-items:center;">
+          <div data-toggle-cat-date="${date}" style="cursor:pointer;">
+            <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
+            ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
+            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
+          </div>
+        </div>
+        ${hasTimeRange ? (isExpanded ? namesHtml : '') : namesHtml}
+      </div>`;
+  }).join("");
+
+  el.innerHTML = `
     <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:10px;">
       <p class="eyebrow">Event Details</p>
@@ -146,9 +172,14 @@ function renderCategoryEventDetails() {
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
-    </div>`;
+    </div>
+    ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
-
+  el.querySelectorAll('[data-toggle-cat-date]').forEach(div => div.addEventListener("click", () => {
+    const date = div.dataset.toggleCatDate;
+    expandedCategoryDate = expandedCategoryDate === date ? null : date;
+    renderCategoryEventDetails();
+  }));
 }
 
 
@@ -254,6 +285,111 @@ document.getElementById("addTimeWindowBtn").addEventListener("click", () => {
   editingTimeWindows.push({ start: "", end: "" });
   renderTimeWindowRows();
 });
+
+function dateRange(start, end) {
+  const dates = [];
+  let cur = new Date(start + "T00:00:00");
+  const last = new Date((end || start) + "T00:00:00");
+  while (cur <= last) {
+    dates.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+// This event's duty time windows as an array of {start, end} 24h "HH:MM"
+// strings. Falls back to the old single dutyStart/dutyEnd pair for events
+// created before split time windows existed.
+function timeWindowsForEvent(ev) {
+  if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) return ev.timeWindows;
+  if (ev.dutyStart && ev.dutyEnd) return [{ start: ev.dutyStart, end: ev.dutyEnd }];
+  return [];
+}
+
+// 30-minute-increment time options within a single {start,end} window.
+function timeOptionsForWindow(win) {
+  const times = [];
+  let [h, m] = win.start.split(":").map(Number);
+  const [endH, endM] = win.end.split(":").map(Number);
+  while (h < endH || (h === endH && m <= endM)) {
+    times.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    m += 30;
+    if (m >= 60) { m -= 60; h += 1; }
+  }
+  return times;
+}
+
+// Builds 30-minute blocks across all of an event's duty time windows.
+function hourSlotsForEvent(ev) {
+  const slots = [];
+  for (const win of timeWindowsForEvent(ev)) {
+    const opts = timeOptionsForWindow(win);
+    for (let i = 0; i < opts.length - 1; i++) {
+      slots.push({ start: opts[i], end: opts[i + 1] });
+    }
+  }
+  return slots;
+}
+
+// Renders a date's volunteer list as a stack of blue/red hour slot cards —
+// same as the member-facing view, read-only (no reserve/cancel controls).
+// Merges a clock hour's two 30-min slots into one row when they'd show
+// the same people, splitting them only when a reservation starts/ends on
+// the half-hour mark.
+function renderHourSlotTable(ev, list) {
+  const slots = hourSlotsForEvent(ev);
+  if (!slots.length) {
+    return list.length
+      ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
+      : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
+  }
+
+  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+  const sameOccupants = (a, b) => {
+    const au = a.map(v => v.uid).sort();
+    const bu = b.map(v => v.uid).sort();
+    return au.length === bu.length && au.every((u, idx) => u === bu[idx]);
+  };
+  const rows = [];
+  for (let i = 0; i < slots.length; i += 2) {
+    const hourIndex = i / 2;
+    const a = slots[i], b = slots[i + 1];
+    const inA = occupantsOf(a);
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex }); continue; }
+    const inB = occupantsOf(b);
+    if (sameOccupants(inA, inB)) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex });
+    } else {
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex });
+    }
+  }
+
+  return `
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+      ${rows.map(row => {
+        const isFull = ev.maxVolunteers != null && row.occupants.length >= ev.maxVolunteers;
+        const accent = row.hourIndex % 2 === 0 ? '59,130,246' : '239,68,68';
+        const capLabel = ev.maxVolunteers != null ? `${row.occupants.length}/${ev.maxVolunteers}` : `${row.occupants.length}`;
+        return `
+          <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
+              <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
+            </div>
+            ${row.occupants.length ? `
+              <div style="margin-top:6px;border-top:1px solid var(--border);">
+                ${row.occupants.map(v => `
+                  <div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:.8rem;border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text);">${escapeHtml(v.fullName || "")}</span>
+                    <span class="muted">${escapeHtml(v.studentNo || "")}</span>
+                    <span class="muted">${escapeHtml(v.committee || "")}</span>
+                  </div>`).join("")}
+              </div>` : `<p class="muted" style="margin:6px 0 0;font-size:.76rem;">No one yet.</p>`}
+          </div>`;
+      }).join("")}
+    </div>`;
+}
 
 // "7:00 AM – 10:00 AM, 1:00 PM – 5:00 PM" style summary of an event's duty
 // time windows. Falls back to the old single dutyStart/dutyEnd pair for
