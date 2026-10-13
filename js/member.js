@@ -12,7 +12,9 @@ let myRecords = [];
 let activeEventFilter = "all";     // for the "My Duty Logs" history tabs
 let activeCategory = "clinic";     // for the "Available Events" tabs
 let selectedEventId = null;        // event chosen from the list, to view details
+let expandedDate = null;           // date card currently expanded to show its hour-slot table
 let openRecord = null;             // the duty record currently clocked-in, if any
+
 
 const EARLY_CLOCKIN_MINUTES = 30; // members can clock in this many minutes before their selected start time
 const LATE_GRACE_MINUTES = 5;     // grace period after selected start time before a clock-in counts as "Late"
@@ -95,9 +97,11 @@ function renderCategoryEvents() {
   
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     selectedEventId = card.dataset.eventId;
+    expandedDate = null;
     renderCategoryEvents();
     renderEventDetails();
   }));
+
 }
 
 // ---------- DATE HELPERS ----------
@@ -337,28 +341,32 @@ function minutesBetween(startHHMM, endHHMM) {
 // Builds 1-hour blocks across all of an event's duty time windows
 // (e.g. 7:00–8:00, 8:00–9:00, ..., then 1:00–2:00, 2:00–3:00, ... for a
 // split shift) for the hour-by-hour slots table.
+// Builds 30-minute blocks across all of an event's duty time windows —
+// matching the same granularity members pick start/end times in, so a
+// reservation like 10:30–11:30 only ever occupies the half-hour blocks
+// it actually covers, instead of blocking out two full clock hours.
 function hourSlotsForEvent(ev) {
   const slots = [];
   for (const win of timeWindowsForEvent(ev)) {
-    let [h, m] = win.start.split(":").map(Number);
-    const [endH, endM] = win.end.split(":").map(Number);
-    while (h < endH || (h === endH && m < endM)) {
-      const start = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-      let nh = h + 1, nm = m;
-      if (nh > endH || (nh === endH && nm > endM)) { nh = endH; nm = endM; }
-      const end = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
-      slots.push({ start, end });
-      h = nh; m = nm;
+    const opts = timeOptionsForWindow(win);
+    for (let i = 0; i < opts.length - 1; i++) {
+      slots.push({ start: opts[i], end: opts[i + 1] });
     }
   }
   return slots;
 }
 
 
+
 // Renders the per-date volunteer list as an hour-by-hour slots table
 // (time block header row, then one row per volunteer whose reserved
 // range overlaps that hour). Falls back to a flat name list for events
 // with no duty-time range set.
+// Renders the per-date volunteer list as a stack of blue slot cards (one
+// per 30-minute block within the event's duty time windows), each a
+// header row of the time + occupancy, followed by the volunteers whose
+// reserved range overlaps that block. Falls back to a flat name list for
+// events with no duty-time range set.
 function renderHourSlotTable(ev, list) {
   const slots = hourSlotsForEvent(ev);
   if (!slots.length) {
@@ -367,21 +375,32 @@ function renderHourSlotTable(ev, list) {
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
   }
   return `
-    <table style="margin-top:6px;">
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
       ${slots.map(slot => {
         const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
-        const capLabel = ev.maxVolunteers != null
-          ? ` — ${inSlot.length}/${ev.maxVolunteers}${inSlot.length >= ev.maxVolunteers ? ' (Full)' : ''}`
-          : "";
+        const isFull = ev.maxVolunteers != null && inSlot.length >= ev.maxVolunteers;
+        const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}${isFull ? ' · Full' : ''}` : `${inSlot.length}`;
         return `
-          <tr><th colspan="3" style="text-align:left;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}${capLabel}</th></tr>
-          ${inSlot.length
-            ? inSlot.map(v => `<tr><td>${escapeHtml(v.fullName || "")}</td><td>${escapeHtml(v.studentNo || "")}</td><td>${escapeHtml(v.committee || "")}</td></tr>`).join("")
-            : `<tr><td colspan="3" class="muted">No one yet.</td></tr>`}
-        `;
+          <div style="border:1px solid rgba(59,130,246,.35);border-radius:8px;overflow:hidden;">
+            <div style="background:rgba(59,130,246,.15);padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">
+              <strong style="color:var(--blue);font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
+              <span style="font-size:.75rem;color:${isFull ? 'var(--red)' : 'var(--blue)'};font-weight:600;">${capLabel}</span>
+            </div>
+            <div style="padding:6px 12px;">
+              ${inSlot.length
+                ? inSlot.map(v => `
+                    <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:.82rem;border-top:1px solid var(--border);">
+                      <span>${escapeHtml(v.fullName || "")}</span>
+                      <span class="muted">${escapeHtml(v.studentNo || "")}</span>
+                      <span class="muted">${escapeHtml(v.committee || "")}</span>
+                    </div>`).join("")
+                : `<p class="muted" style="margin:2px 0;font-size:.78rem;">No one yet.</p>`}
+            </div>
+          </div>`;
       }).join("")}
-    </table>`;
+    </div>`;
 }
+
 
 // True if every hour this [startTime, endTime) range touches still has
 // room under the event's max-volunteers-per-hour cap (no cap set = always ok).
@@ -509,20 +528,23 @@ function renderEventDetails() {
           </select>
         </div>` : "";
 
-    return `
-      <div class="card" style="margin-bottom:8px;">
-        <div class="row" style="align-items:center;">
-          <div>
-            <strong>${dateLabel}</strong>
-            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
+const isExpanded = expandedDate === date;
 
+    return `
+      <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
+        <div class="row" style="align-items:center;">
+          <div data-toggle-date="${date}" style="cursor:pointer;">
+            <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
+            ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
+            <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
           </div>
           ${actionHtml}
         </div>
         ${timePickerHtml}
-        ${namesHtml}
+        ${hasTimeRange ? (isExpanded ? namesHtml : '') : namesHtml}
       </div>`;
   }).join("");
+
 
   el.innerHTML = `
     <hr class="section-divider">
@@ -537,6 +559,12 @@ function renderEventDetails() {
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
+
+  el.querySelectorAll('[data-toggle-date]').forEach(div => div.addEventListener("click", () => {
+    const date = div.dataset.toggleDate;
+    expandedDate = expandedDate === date ? null : date;
+    renderEventDetails();
+  }));
 
   el.querySelectorAll('[data-start-time]').forEach(startSel => startSel.addEventListener("change", () => {
     const date = startSel.dataset.startTime;
