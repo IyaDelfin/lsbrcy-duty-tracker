@@ -474,7 +474,8 @@ function renderMemberDetail() {
                     <input type="time" data-edit-timeout="${r.id}" value="${r.timeOut ? toTimeInputValue(r.timeOut) : ''}">
                   </div>
                   <input type="text" data-edit-addedby="${r.id}" value="${escapeHtml(r.addedBy || '')}" placeholder="Added/verified by (your name)">
-                  <textarea data-edit-note="${r.id}" placeholder="Note (e.g. Noted by...)" style="width:100%;min-height:60px;margin:8px 0;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;">${escapeHtml(r.note || '')}</textarea>
+                    <textarea data-edit-note="${r.id}" placeholder="Note (e.g. Noted by...)" style="position:static;float:none;display:block;box-sizing:border-box;width:100%;min-height:60px;margin:8px 0;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;">${escapeHtml(r.note || '')}</textarea>
+
                   <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0 0 10px;">
                     <input type="checkbox" data-edit-late="${r.id}" ${r.late ? 'checked' : ''} style="width:auto;margin:0;"> Mark as Late
                   </label>
@@ -504,7 +505,8 @@ function renderMemberDetail() {
       </div>
         <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
         <input id="manualRecordAddedBy" type="text" placeholder="Added/verified by (your name)">
-        <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="width:100%;min-height:50px;margin-bottom:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
+      <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="position:static;float:none;display:block;box-sizing:border-box;width:100%;min-height:50px;margin-bottom:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
+
       <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
         <input type="checkbox" id="manualRecordLate" style="width:auto;margin:0;"> Mark as Late
       </label>
