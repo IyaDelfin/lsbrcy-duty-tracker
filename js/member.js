@@ -380,19 +380,18 @@ function renderHourSlotTable(ev, list) {
         const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
         const isFull = ev.maxVolunteers != null && inSlot.length >= ev.maxVolunteers;
         // Each clock hour (two 30-min slots) shares one color, alternating
-        // red/orange hour by hour, so 8:00-8:30 and 8:30-9:00 match, then
+        // red/blue hour by hour, so 8:00-8:30 and 8:30-9:00 match, then
         // 9:00-9:30 and 9:30-10:00 switch to the other color.
         const hourGroup = Math.floor(i / 2);
         const isRedHour = hourGroup % 2 === 0;
-        const accent = isRedHour ? 'var(--red)' : 'var(--orange)';
-        const accentBg = isRedHour ? 'rgba(239,68,68,.15)' : 'rgba(249,115,22,.15)';
-        const accentBorder = isRedHour ? 'rgba(239,68,68,.35)' : 'rgba(249,115,22,.35)';
+        const accentBg = isRedHour ? 'rgba(239,68,68,.55)' : 'rgba(59,130,246,.55)';
+        const accentBorder = isRedHour ? 'rgba(239,68,68,.7)' : 'rgba(59,130,246,.7)';
         const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}` : `${inSlot.length}`;
         return `
           <div style="border:1px solid ${accentBorder};border-radius:8px;overflow:hidden;">
             <div style="background:${accentBg};padding:6px 12px;display:flex;justify-content:space-between;align-items:center;">
-              <strong style="color:${accent};font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
-              <span style="font-size:.75rem;color:${accent};${isFull ? 'font-weight:800;' : 'font-weight:600;'}">${isFull ? '⚠ ' : ''}${capLabel}</span>
+              <strong style="color:#fff;font-size:.82rem;">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</strong>
+              <span style="font-size:.75rem;${isFull ? 'color:var(--red);font-weight:800;background:#fff;border-radius:4px;padding:1px 6px;' : 'color:#fff;font-weight:600;'}">${isFull ? '⚠ ' : ''}${capLabel}</span>
             </div>
             <div style="padding:6px 12px;">
               ${inSlot.length
