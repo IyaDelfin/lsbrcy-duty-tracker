@@ -374,26 +374,48 @@ function renderHourSlotTable(ev, list) {
       ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
   }
+
+  // Merge each clock hour's two 30-min slots into one display row when
+  // they'd show the exact same people (the common case) — but keep them
+  // split into two half-hour rows whenever a reservation starts or ends
+  // on that half-hour mark (e.g. 10:30-11:30), so a partial-hour booking
+  // doesn't visually "claim" the whole hour.
+  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+  const sameOccupants = (a, b) => {
+    const au = a.map(v => v.uid).sort();
+    const bu = b.map(v => v.uid).sort();
+    return au.length === bu.length && au.every((u, idx) => u === bu[idx]);
+  };
+  const rows = [];
+  for (let i = 0; i < slots.length; i += 2) {
+    const hourIndex = i / 2;
+    const a = slots[i], b = slots[i + 1];
+    const inA = occupantsOf(a);
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex }); continue; }
+    const inB = occupantsOf(b);
+    if (sameOccupants(inA, inB)) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex });
+    } else {
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex });
+    }
+  }
+
   return `
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-      ${slots.map((slot, i) => {
-        const inSlot = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
-        const isFull = ev.maxVolunteers != null && inSlot.length >= ev.maxVolunteers;
-        // Each clock hour (two 30-min slots) shares one accent color,
-        // alternating blue/red hour by hour — a thin left bar + faint tint,
-        // not a solid block, so it reads as a cue rather than a wall of color.
-        const hourGroup = Math.floor(i / 2);
-        const accent = hourGroup % 2 === 0 ? '59,130,246' : '239,68,68'; // blue / red, as rgb triples
-        const capLabel = ev.maxVolunteers != null ? `${inSlot.length}/${ev.maxVolunteers}` : `${inSlot.length}`;
+      ${rows.map(row => {
+        const isFull = ev.maxVolunteers != null && row.occupants.length >= ev.maxVolunteers;
+        const accent = row.hourIndex % 2 === 0 ? '59,130,246' : '239,68,68'; // blue / red, as rgb triples
+        const capLabel = ev.maxVolunteers != null ? `${row.occupants.length}/${ev.maxVolunteers}` : `${row.occupants.length}`;
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(slot.start)} – ${formatTime12(slot.end)}</span>
+              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
-            ${inSlot.length ? `
+            ${row.occupants.length ? `
               <div style="margin-top:6px;border-top:1px solid var(--border);">
-                ${inSlot.map(v => `
+                ${row.occupants.map(v => `
                   <div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:.8rem;border-bottom:1px solid var(--border);">
                     <span style="color:var(--text);">${escapeHtml(v.fullName || "")}</span>
                     <span class="muted">${escapeHtml(v.committee || "")}</span>
