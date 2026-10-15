@@ -369,7 +369,7 @@ function renderHourSlotTable(ev, list) {
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
       ${rows.map(row => {
         const isFull = ev.maxVolunteers != null && row.occupants.length >= ev.maxVolunteers;
-        const accent = row.hourIndex % 2 === 0 ? '59,130,246' : '239,68,68';
+        const accent = row.occupants.length > 0 ? '239,68,68' : '59,130,246'; // red once reserved, blue while open
         const capLabel = ev.maxVolunteers != null ? `${row.occupants.length}/${ev.maxVolunteers}` : `${row.occupants.length}`;
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
