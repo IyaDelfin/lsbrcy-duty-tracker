@@ -19,6 +19,7 @@ let openRecord = null;             // the duty record currently clocked-in, if a
 const EARLY_CLOCKIN_MINUTES = 30; // members can clock in this many minutes before their selected start time
 const LATE_GRACE_MINUTES = 5;     // grace period after selected start time before a clock-in counts as "Late"
 const NO_SHOW_MINUTES = 15;       // if not clocked in this many minutes after start, the reservation is auto-cancelled as a No Show
+const EARLY_CLOCKOUT_GRACE_MINUTES = 5; // members can clock out this many minutes before their scheduled end without it counting as "Early Out"
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 onAuthStateChanged(auth, async (user) => {
@@ -705,8 +706,10 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       let confirmMsg = "Confirm clock out.";
       if (shiftEnd) {
         const scheduledEnd = combineDateTime(recordDate, shiftEnd);
-        if (timeOut < scheduledEnd.getTime()) {
+        const earlyOutThreshold = scheduledEnd.getTime() - EARLY_CLOCKOUT_GRACE_MINUTES * 60000;
+     if (timeOut < earlyOutThreshold) {
           earlyOut = true;
+
           const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
           const hrs = Math.floor(remainingMins / 60);
           const mins = remainingMins % 60;
