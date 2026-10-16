@@ -118,6 +118,7 @@ function renderCategoryEvents() {
     <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+      ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
 
@@ -296,6 +297,17 @@ function dateRange(start, end) {
   }
   return dates;
 }
+
+// "Mon, Oct 19 – Wed, Oct 21" (or just "Mon, Oct 19" for a one-day event)
+// summary of an event's date range, for display on event cards.
+function formatEventDateRange(ev) {
+  if (!ev.startDate) return "";
+  const startLabel = new Date(ev.startDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  if (!ev.endDate || ev.endDate === ev.startDate) return startLabel;
+  const endLabel = new Date(ev.endDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return `${startLabel} – ${endLabel}`;
+}
+
 
 // This event's duty time windows as an array of {start, end} 24h "HH:MM"
 // strings. Falls back to the old single dutyStart/dutyEnd pair for events
