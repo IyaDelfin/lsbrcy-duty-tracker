@@ -144,13 +144,12 @@ function renderCategoryEventDetails() {
 
   const volunteersByDate = ev.volunteersByDate || {};
   const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
-  const hasTimeRange = timeWindowsForEvent(ev).length > 0;
-
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
+    const hasTimeRange = timeWindowsForEvent(ev, date).length > 0;
     const isExpanded = expandedCategoryDate === date;
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-    const namesHtml = renderHourSlotTable(ev, list);
+  const namesHtml = renderHourSlotTable(ev, list, date);
 
     return `
       <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
@@ -406,12 +405,20 @@ function formatEventDateRange(ev) {
 // This event's duty time windows as an array of {start, end} 24h "HH:MM"
 // strings. Falls back to the old single dutyStart/dutyEnd pair for events
 // created before split time windows existed.
-function timeWindowsForEvent(ev) {
-  if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) return ev.timeWindows;
-  if (ev.dutyStart && ev.dutyEnd) return [{ start: ev.dutyStart, end: ev.dutyEnd }];
-  return [];
+function timeWindowsForEvent(ev, date) {
+  const overrides = date && ev.dateOverrides && ev.dateOverrides[date];
+  let windows;
+  if (overrides && overrides.length) {
+    windows = overrides;
+  } else if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) {
+    windows = ev.timeWindows;
+  } else if (ev.dutyStart && ev.dutyEnd) {
+    windows = [{ start: ev.dutyStart, end: ev.dutyEnd }];
+  } else {
+    windows = [];
+  }
+  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "" }));
 }
-
 // 30-minute-increment time options within a single {start,end} window.
 function timeOptionsForWindow(win) {
   const times = [];
@@ -426,24 +433,23 @@ function timeOptionsForWindow(win) {
 }
 
 // Builds 30-minute blocks across all of an event's duty time windows.
-function hourSlotsForEvent(ev) {
+function hourSlotsForEvent(ev, date) {
   const slots = [];
-  for (const win of timeWindowsForEvent(ev)) {
+  for (const win of timeWindowsForEvent(ev, date)) {
     const opts = timeOptionsForWindow(win);
     for (let i = 0; i < opts.length - 1; i++) {
-      slots.push({ start: opts[i], end: opts[i + 1] });
+      slots.push({ start: opts[i], end: opts[i + 1], location: win.location });
     }
   }
   return slots;
 }
-
 // Renders a date's volunteer list as a stack of blue/red hour slot cards —
 // same as the member-facing view, read-only (no reserve/cancel controls).
 // Merges a clock hour's two 30-min slots into one row when they'd show
 // the same people, splitting them only when a reservation starts/ends on
 // the half-hour mark.
-function renderHourSlotTable(ev, list) {
-  const slots = hourSlotsForEvent(ev);
+function renderHourSlotTable(ev, list, date) {
+  const slots = hourSlotsForEvent(ev, date);
   if (!slots.length) {
     return list.length
       ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
@@ -461,13 +467,13 @@ function renderHourSlotTable(ev, list) {
     const hourIndex = i / 2;
     const a = slots[i], b = slots[i + 1];
     const inA = occupantsOf(a);
-    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex }); continue; }
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location }); continue; }
     const inB = occupantsOf(b);
-    if (sameOccupants(inA, inB)) {
-      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex });
+    if (sameOccupants(inA, inB) && a.location === b.location) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location });
     } else {
-      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex });
-      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex });
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location });
     }
   }
 
@@ -480,7 +486,7 @@ function renderHourSlotTable(ev, list) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
+<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
@@ -556,6 +562,10 @@ function renderEvents() {
     }
   }));
 }
+
+
+
+
 
 // ---------- MEMBERS ----------
 document.getElementById("addMemberBtn").addEventListener("click", async () => {
