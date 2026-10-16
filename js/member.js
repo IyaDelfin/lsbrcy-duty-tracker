@@ -495,6 +495,16 @@ function hasOverlappingReservation(date, startTime, endTime, excludeEventId) {
 }
 
 
+// True if the signed-in member already holds a reservation on `date` for
+// this event — regardless of time block or location (1 per date per event).
+// Reads the live copy of the event so a stale card can't slip past it.
+function hasReservationOnDate(ev, date) {
+  const live = allEvents.find(e => e.id === ev.id) || ev;
+  const list = (live.volunteersByDate || {})[date] || [];
+  return list.some(v => v.uid === currentUser.uid);
+}
+
+
 async function reserveDate(ev, date, startTime, endTime) {
   const entry = {
     uid: currentUser.uid,
@@ -650,6 +660,10 @@ const isExpanded = expandedDate === date;
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     const startTime = startSel ? startSel.value : null;
     const endTime = endSel ? endSel.value : null;
+    if (hasReservationOnDate(ev, date)) {
+      alert("You already have a reservation on this date for this event. Only 1 reservation per date is allowed.");
+      return;
+    }
     if (startSel && endSel) {
       const duration = minutesBetween(startTime, endTime);
       if (duration < 60) {
