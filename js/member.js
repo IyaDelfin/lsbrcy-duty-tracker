@@ -288,14 +288,26 @@ function combineDateTime(dateStr, hhmm) {
   return new Date(`${dateStr}T${hhmm}:00`);
 }
 
-// This event's duty time windows as an array of {start, end} 24h "HH:MM"
-// strings — e.g. [{start:"07:00",end:"10:00"}, {start:"13:00",end:"17:00"}]
-// for a split shift. Falls back to the old single dutyStart/dutyEnd pair
-// for events created before split time windows existed.
-function timeWindowsForEvent(ev) {
-  if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) return ev.timeWindows;
-  if (ev.dutyStart && ev.dutyEnd) return [{ start: ev.dutyStart, end: ev.dutyEnd }];
-  return [];
+// This event's duty time windows (each as {start, end, location}) for a
+// specific date — using that date's per-date schedule override if the
+// event has one, otherwise the event's regular timeWindows. A block's
+// location defaults to the event's own `location` field when left blank.
+// Falls back to the old single dutyStart/dutyEnd pair for events created
+// before split time windows existed. Call without a date (or with a date
+// that has no override) to get the event's default windows.
+function timeWindowsForEvent(ev, date) {
+  const overrides = date && ev.dateOverrides && ev.dateOverrides[date];
+  let windows;
+  if (overrides && overrides.length) {
+    windows = overrides;
+  } else if (Array.isArray(ev.timeWindows) && ev.timeWindows.length) {
+    windows = ev.timeWindows;
+  } else if (ev.dutyStart && ev.dutyEnd) {
+    windows = [{ start: ev.dutyStart, end: ev.dutyEnd }];
+  } else {
+    windows = [];
+  }
+  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "" }));
 }
 
 // 30-minute-increment time options within a single {start,end} window.
@@ -311,29 +323,33 @@ function timeOptionsForWindow(win) {
   return times;
 }
 
-// All start/end time options across every one of the event's windows —
-// e.g. two separate blocks of options for a 7–10 AM / 1–5 PM split shift.
-function timeOptionsForEvent(ev) {
-  return timeWindowsForEvent(ev).flatMap(timeOptionsForWindow);
+// All start/end time options across every one of the event's windows for
+// a given date — e.g. two separate blocks of options for a 7–10 AM / 1–5 PM
+// split shift.
+function timeOptionsForEvent(ev, date) {
+  return timeWindowsForEvent(ev, date).flatMap(timeOptionsForWindow);
 }
 
-// Valid shift-start options: every window's own times, minus each window's
-// final time (can't start a shift with nowhere left to go in that window).
-function startTimeOptionsForEvent(ev) {
-  return timeWindowsForEvent(ev).flatMap(w => timeOptionsForWindow(w).slice(0, -1));
+// Valid shift-start options for a given date: every window's own times,
+// minus each window's final time (can't start a shift with nowhere left
+// to go in that window).
+function startTimeOptionsForEvent(ev, date) {
+  return timeWindowsForEvent(ev, date).flatMap(w => timeOptionsForWindow(w).slice(0, -1));
 }
 
-// The specific window a given start time falls under, so end-time options
-// never cross into an unrelated block (e.g. a 9:30 AM start in a 7–10 AM
-// window offers 10:00 AM as the latest end, never jumping to a 1–5 PM block).
-function windowContaining(ev, time) {
-  return timeWindowsForEvent(ev).find(w => timeOptionsForWindow(w).includes(time));
+// The specific window a given start time falls under on a given date, so
+// end-time options never cross into an unrelated block (e.g. a 9:30 AM
+// start in a 7–10 AM window offers 10:00 AM as the latest end, never
+// jumping to a 1–5 PM block).
+function windowContaining(ev, time, date) {
+  return timeWindowsForEvent(ev, date).find(w => timeOptionsForWindow(w).includes(time));
 }
 
-// End-time options after `startTime`, confined to the same window as the
-// start and capped so the shift never exceeds the event's max hours.
-function endTimeOptions(ev, startTime) {
-  const win = windowContaining(ev, startTime);
+// End-time options after `startTime` on a given date, confined to the same
+// window as the start and capped so the shift never exceeds the event's
+// max hours.
+function endTimeOptions(ev, startTime, date) {
+  const win = windowContaining(ev, startTime, date);
   if (!win) return [];
   const winTimes = timeOptionsForWindow(win);
   const idx = winTimes.indexOf(startTime);
@@ -362,12 +378,12 @@ function minutesBetween(startHHMM, endHHMM) {
 // matching the same granularity members pick start/end times in, so a
 // reservation like 10:30–11:30 only ever occupies the half-hour blocks
 // it actually covers, instead of blocking out two full clock hours.
-function hourSlotsForEvent(ev) {
+function hourSlotsForEvent(ev, date) {
   const slots = [];
-  for (const win of timeWindowsForEvent(ev)) {
+  for (const win of timeWindowsForEvent(ev, date)) {
     const opts = timeOptionsForWindow(win);
     for (let i = 0; i < opts.length - 1; i++) {
-      slots.push({ start: opts[i], end: opts[i + 1] });
+      slots.push({ start: opts[i], end: opts[i + 1], location: win.location });
     }
   }
   return slots;
@@ -384,8 +400,8 @@ function hourSlotsForEvent(ev) {
 // header row of the time + occupancy, followed by the volunteers whose
 // reserved range overlaps that block. Falls back to a flat name list for
 // events with no duty-time range set.
-function renderHourSlotTable(ev, list) {
-  const slots = hourSlotsForEvent(ev);
+function renderHourSlotTable(ev, list, date) {
+  const slots = hourSlotsForEvent(ev, date);
   if (!slots.length) {
     return list.length
       ? `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">${list.map(v => escapeHtml(v.fullName || "")).join(", ")}</p>`
@@ -393,10 +409,10 @@ function renderHourSlotTable(ev, list) {
   }
 
   // Merge each clock hour's two 30-min slots into one display row when
-  // they'd show the exact same people (the common case) — but keep them
-  // split into two half-hour rows whenever a reservation starts or ends
-  // on that half-hour mark (e.g. 10:30-11:30), so a partial-hour booking
-  // doesn't visually "claim" the whole hour.
+  // they'd show the exact same people in the exact same location (the
+  // common case) — but keep them split into two half-hour rows whenever a
+  // reservation starts or ends on that half-hour mark (e.g. 10:30-11:30),
+  // so a partial-hour booking doesn't visually "claim" the whole hour.
   const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
   const sameOccupants = (a, b) => {
     const au = a.map(v => v.uid).sort();
@@ -408,13 +424,13 @@ function renderHourSlotTable(ev, list) {
     const hourIndex = i / 2;
     const a = slots[i], b = slots[i + 1];
     const inA = occupantsOf(a);
-    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex }); continue; }
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location }); continue; }
     const inB = occupantsOf(b);
-    if (sameOccupants(inA, inB)) {
-      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex });
+    if (sameOccupants(inA, inB) && a.location === b.location) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location });
     } else {
-      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex });
-      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex });
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location });
     }
   }
 
@@ -427,7 +443,7 @@ function renderHourSlotTable(ev, list) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
+              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}${row.location ? ` · ${escapeHtml(row.location)}` : ''}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
@@ -444,17 +460,19 @@ function renderHourSlotTable(ev, list) {
 }
 
 
+
 // True if every hour this [startTime, endTime) range touches still has
 // room under the event's max-volunteers-per-hour cap (no cap set = always ok).
-function hourCapacityOk(ev, list, startTime, endTime) {
+function hourCapacityOk(ev, list, startTime, endTime, date) {
   if (ev.maxVolunteers == null) return true;
-  for (const slot of hourSlotsForEvent(ev)) {
+  for (const slot of hourSlotsForEvent(ev, date)) {
     if (!(startTime < slot.end && endTime > slot.start)) continue;
     const count = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start).length;
     if (count >= ev.maxVolunteers) return false;
   }
   return true;
 }
+
 
 // True if the member already has a timed reservation on `date` (on any
 // other event) whose [start, end) overlaps the newly requested range.
@@ -486,6 +504,10 @@ async function reserveDate(ev, date, startTime, endTime) {
   };
   if (startTime) entry.startTime = startTime;
   if (endTime) entry.endTime = endTime;
+  if (startTime) {
+    const win = windowContaining(ev, startTime, date);
+    if (win && win.location) entry.location = win.location;
+  }
 
   await updateDoc(doc(db, "events", ev.id), {
     [`volunteersByDate.${date}`]: arrayUnion(entry)
@@ -510,11 +532,15 @@ function renderEventDetails() {
 
   const volunteersByDate = ev.volunteersByDate || {};
   const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
-  const timeOptions = timeOptionsForEvent(ev);
-  const hasTimeRange = timeOptions.length > 1;
   const myReservationCount = memberReservationCountForEvent(ev);
   const atMemberLimit = ev.maxPerMember != null && myReservationCount >= ev.maxPerMember;
   const today = todayStr();
+
+  const datesHtml = dates.map(date => {
+    const list = volunteersByDate[date] || [];
+    const timeOptions = timeOptionsForEvent(ev, date);
+    const hasTimeRange = timeOptions.length > 1;
+    const full = ev.maxVolunteers != null && !hasTimeRange && list.length >= ev.maxVolunteers;
 
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
@@ -528,20 +554,21 @@ function renderEventDetails() {
 
 
      // Today's start options drop any time that's already passed.
-    const startOptionsForDate = startTimeOptionsForEvent(ev).filter(t =>
+    const startOptionsForDate = startTimeOptionsForEvent(ev, date).filter(t =>
       date !== today || combineDateTime(date, t).getTime() > Date.now()
     );
     const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
     const defaultStart = startOptionsForDate[0];
-    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart) : [];
+    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date) : [];
     
-    const namesHtml = renderHourSlotTable(ev, list);
+    const namesHtml = renderHourSlotTable(ev, list, date);
+
 
 
     let actionHtml;
     if (alreadyReserved) {
       actionHtml = `<div style="text-align:right;">
-          <span class="badge green">Reserved${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}</span><br>
+          <span class="badge green">Reserved${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}${myEntry.location ? ` · ${escapeHtml(myEntry.location)}` : ""}</span><br>
           ${isActiveShift
             ? `<p class="muted" style="margin:4px 0 0;font-size:.7rem;">Currently on duty</p>`
             : `<button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>`}
@@ -575,9 +602,11 @@ const isExpanded = expandedDate === date;
     return `
       <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
         <div class="row" style="align-items:center;">
-          <div data-toggle-date="${date}" style="cursor:pointer;">
+              <div data-toggle-date="${date}" style="cursor:pointer;">
             <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
+            ${(ev.dateOverrides && ev.dateOverrides[date] && ev.dateOverrides[date].length) ? `<span class="badge orange" style="margin-left:4px;font-size:.65rem;">Custom schedule</span>` : ''}
             ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
+            
             <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
           </div>
           ${actionHtml}
@@ -612,7 +641,7 @@ const isExpanded = expandedDate === date;
     const date = startSel.dataset.startTime;
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     if (!endSel) return;
-    endSel.innerHTML = endTimeOptions(ev, startSel.value)
+    endSel.innerHTML = endTimeOptions(ev, startSel.value, date)
       .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
   }));
 
@@ -636,12 +665,13 @@ const isExpanded = expandedDate === date;
             if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
         alert("You already have a reservation that overlaps with this time on this date.");
         return;
-      }
+      }     
       const dateList = (ev.volunteersByDate || {})[date] || [];
-      if (!hourCapacityOk(ev, dateList, startTime, endTime)) {
+      if (!hourCapacityOk(ev, dateList, startTime, endTime, date)) {
         alert(`One or more hours in this range are already full (max ${ev.maxVolunteers} per hour).`);
         return;
       }
+
     }
     reserveDate(ev, date, startTime, endTime);
 
