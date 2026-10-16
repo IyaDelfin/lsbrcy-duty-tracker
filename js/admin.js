@@ -143,7 +143,7 @@ function renderCategoryEventDetails() {
   if (!ev) { el.innerHTML = ""; return; }
 
   const volunteersByDate = ev.volunteersByDate || {};
-  const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+const dates = eventDates(ev);
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
     const hasTimeRange = timeWindowsForEvent(ev, date).length > 0;
@@ -214,8 +214,21 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const manualOnly = document.getElementById("evManualOnly").checked;
   if (!name) return;
 
-  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, timeWindows, dateOverrides, pic, compliance, manualOnly };
+   const overrideDatesSorted = Object.keys(dateOverrides).sort();
+  const overridesOnlyChecked = document.getElementById("evOverridesOnly").checked;
+  if (overridesOnlyChecked && !overrideDatesSorted.length) {
+    alert('Add at least one date override (with a start and end time) first, or untick "Only use the dates listed above".');
+    return;
+  }
+  const overridesOnly = overridesOnlyChecked;
+  const payload = {
+    name, location, category, maxHours, maxVolunteers, maxPerMember,
+    startDate: overridesOnly ? overrideDatesSorted[0] : startDate,
+    endDate: overridesOnly ? overrideDatesSorted[overrideDatesSorted.length - 1] : endDate,
+    timeWindows, dateOverrides, overridesOnly, pic, compliance, manualOnly
+  };
 
+  
   if (editingEventId) {
     await updateDoc(doc(db, "events", editingEventId), payload);
     editingEventId = null;
@@ -231,7 +244,8 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   }
 
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
+  document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
   editingDateOverrides = {};
@@ -243,7 +257,8 @@ document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
+  document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
   editingDateOverrides = {};
@@ -256,7 +271,8 @@ document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
+  document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
 });
@@ -283,7 +299,8 @@ function startEditEvent(ev) {
 
   document.getElementById("evPic").value = ev.pic || "";
   document.getElementById("evCompliance").value = ev.compliance || "";
-  document.getElementById("evManualOnly").checked = !!ev.manualOnly;
+document.getElementById("evManualOnly").checked = !!ev.manualOnly;
+  document.getElementById("evOverridesOnly").checked = !!ev.overridesOnly;
   document.getElementById("addEventBtn").textContent = "Save Changes";
   document.getElementById("cancelEditEventBtn").style.display = "inline-block";
   document.getElementById("evName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -380,6 +397,17 @@ document.getElementById("addOverrideDateBtn").addEventListener("click", () => {
 });
 
 
+// Dates this event runs on. Normally every day from startDate to endDate;
+// with "overridesOnly" set, just the dates that have a per-date override
+// (so a non-consecutive event like Oct 19 + Oct 21 skips Oct 20).
+function eventDates(ev) {
+  if (ev.overridesOnly && ev.dateOverrides) {
+    const keys = Object.keys(ev.dateOverrides).sort();
+    if (keys.length) return keys;
+  }
+  return ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+}
+
 function dateRange(start, end) {
   const dates = [];
   let cur = new Date(start + "T00:00:00");
@@ -394,6 +422,10 @@ function dateRange(start, end) {
 // "Mon, Oct 19 – Wed, Oct 21" (or just "Mon, Oct 19" for a one-day event)
 // summary of an event's date range, for display on event cards.
 function formatEventDateRange(ev) {
+  if (ev.overridesOnly && ev.dateOverrides) {
+    const ds = Object.keys(ev.dateOverrides).sort();
+    if (ds.length) return ds.map(d => new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })).join(" · ");
+  }
   if (!ev.startDate) return "";
   const startLabel = new Date(ev.startDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   if (!ev.endDate || ev.endDate === ev.startDate) return startLabel;
