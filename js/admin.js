@@ -206,7 +206,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   for (const date in editingDateOverrides) {
     const blocks = (editingDateOverrides[date] || [])
       .filter(b => b.start && b.end)
-      .map(b => ({ start: b.start, end: b.end, location: (b.location || "").trim() }));
+      .map(b => ({ start: b.start, end: b.end, location: (b.location || "").trim(), pic: (b.pic || "").trim() }));
     if (blocks.length) dateOverrides[date] = blocks;
   }
   const pic = document.getElementById("evPic").value.trim();
@@ -353,6 +353,7 @@ function renderDateOverrides() {
             <input type="time" data-override-start="${date}|${i}" value="${b.start || ""}">
             <input type="time" data-override-end="${date}|${i}" value="${b.end || ""}">
             <input type="text" data-override-location="${date}|${i}" value="${escapeHtml(b.location || "")}" placeholder="Location (optional — defaults to event location)">
+            <input type="text" data-override-pic="${date}|${i}" value="${escapeHtml(b.pic || "")}" placeholder="PIC (optional)">
             <button type="button" class="danger" data-remove-override-block="${date}|${i}" style="padding:6px 10px;font-size:.75rem;">✕</button>
           </div>`).join("")}
         <button type="button" class="secondary" data-add-override-block="${date}" style="padding:4px 10px;font-size:.75rem;width:auto;margin-top:6px;">+ Add Block</button>
@@ -371,8 +372,12 @@ function renderDateOverrides() {
     const [date, i] = input.dataset.overrideLocation.split("|");
     editingDateOverrides[date][+i].location = input.value;
   }));
+  el.querySelectorAll("[data-override-pic]").forEach(input => input.addEventListener("input", () => {
+    const [date, i] = input.dataset.overridePic.split("|");
+    editingDateOverrides[date][+i].pic = input.value;
+  }));
   el.querySelectorAll("[data-add-override-block]").forEach(btn => btn.addEventListener("click", () => {
-    editingDateOverrides[btn.dataset.addOverrideBlock].push({ start: "", end: "", location: "" });
+    editingDateOverrides[btn.dataset.addOverrideBlock].push({ start: "", end: "", location: "", pic: "" });
     renderDateOverrides();
   }));
   el.querySelectorAll("[data-remove-override-block]").forEach(btn => btn.addEventListener("click", () => {
@@ -391,7 +396,7 @@ document.getElementById("addOverrideDateBtn").addEventListener("click", () => {
   const date = dateInput.value;
   if (!date) return;
   if (!editingDateOverrides[date]) editingDateOverrides[date] = [];
-  editingDateOverrides[date].push({ start: "", end: "", location: "" });
+  editingDateOverrides[date].push({ start: "", end: "", location: "", pic: "" });
   dateInput.value = "";
   renderDateOverrides();
 });
@@ -449,7 +454,7 @@ function timeWindowsForEvent(ev, date) {
   } else {
     windows = [];
   }
-  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "" }));
+  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "", pic: (w.pic || "").trim() }));
 }
 // 30-minute-increment time options within a single {start,end} window.
 function timeOptionsForWindow(win) {
@@ -470,7 +475,7 @@ function hourSlotsForEvent(ev, date) {
   for (const win of timeWindowsForEvent(ev, date)) {
     const opts = timeOptionsForWindow(win);
     for (let i = 0; i < opts.length - 1; i++) {
-      slots.push({ start: opts[i], end: opts[i + 1], location: win.location });
+      slots.push({ start: opts[i], end: opts[i + 1], location: win.location, pic: win.pic });
     }
   }
   return slots;
@@ -499,13 +504,13 @@ function renderHourSlotTable(ev, list, date) {
     const hourIndex = i / 2;
     const a = slots[i], b = slots[i + 1];
     const inA = occupantsOf(a);
-    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location }); continue; }
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location, pic: a.pic }); continue; }
     const inB = occupantsOf(b);
-    if (sameOccupants(inA, inB) && a.location === b.location) {
-      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location });
+    if (sameOccupants(inA, inB) && a.location === b.location && a.pic === b.pic) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location, pic: a.pic });
     } else {
-      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location });
-      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location });
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location, pic: a.pic });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location, pic: b.pic });
     }
   }
 
@@ -518,7 +523,7 @@ function renderHourSlotTable(ev, list, date) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
+<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
@@ -1108,4 +1113,3 @@ function formatTime12(hhmm) {
   if (h < 12) return `${h}:${mm} AM`;
   return `${h - 12}:${mm} PM`;
 }
-
