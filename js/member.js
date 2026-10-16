@@ -85,13 +85,18 @@ function renderCategoryEvents() {
   const active = allEvents.filter(e => e.status === "active" && !e.manualOnly && (e.category || "clinic") === activeCategory);
 
     listEl.innerHTML = active.map(ev => `
-    <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
-      <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-      <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-      ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
-      <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0)} volunteer${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0) === 1 ? '' : 's'}</p>
-      ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+    <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
+      <div class="row" style="align-items:center;">
+        <div>
+          <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
+          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+          ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
+          <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0)} volunteer${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0) === 1 ? '' : 's'}</p>
+        </div>
+        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
+      </div>
+    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+
 
 
 
