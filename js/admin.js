@@ -493,7 +493,9 @@ function renderHourSlotTable(ev, list, date) {
       : `<p class="muted" style="margin:4px 0 0;font-size:.8rem;">No one yet.</p>`;
   }
 
-  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+  // Only count a volunteer toward a slot's location if they picked that location
+  // (older reservations with no location still count everywhere).
+  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start && (!v.location || !slot.location || v.location === slot.location));
   const sameOccupants = (a, b) => {
     const au = a.map(v => v.uid).sort();
     const bu = b.map(v => v.uid).sort();
@@ -1113,3 +1115,4 @@ function formatTime12(hhmm) {
   if (h < 12) return `${h}:${mm} AM`;
   return `${h - 12}:${mm} PM`;
 }
+
