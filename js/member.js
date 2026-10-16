@@ -542,16 +542,13 @@ function renderEventDetails() {
     const hasTimeRange = timeOptions.length > 1;
     const full = ev.maxVolunteers != null && !hasTimeRange && list.length >= ev.maxVolunteers;
 
-  const datesHtml = dates.map(date => {
-    const list = volunteersByDate[date] || [];
-    const full = ev.maxVolunteers != null && !hasTimeRange && list.length >= ev.maxVolunteers;
+    
 
     const myEntry = list.find(v => v.uid === currentUser.uid);
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
     const isPastDate = date < today; // "YYYY-MM-DD" strings compare correctly lexically
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
-
 
      // Today's start options drop any time that's already passed.
     const startOptionsForDate = startTimeOptionsForEvent(ev, date).filter(t =>
@@ -562,6 +559,7 @@ function renderEventDetails() {
     const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date) : [];
     
     const namesHtml = renderHourSlotTable(ev, list, date);
+
 
 
 
