@@ -443,7 +443,7 @@ function renderHourSlotTable(ev, list, date) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${formatTime12(row.start)} – ${formatTime12(row.end)}${row.location ? ` · ${escapeHtml(row.location)}` : ''}</span>
+<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
