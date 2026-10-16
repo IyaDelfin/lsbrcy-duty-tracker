@@ -42,9 +42,11 @@ let evStatusFilter = "active";
 let evCategoryFilter = "all";
 let editingEventId = null;
 let editingTimeWindows = [];
+let editingDateOverrides = {}; // { "YYYY-MM-DD": [{start, end, location}, ...] } — per-date schedule overrides being edited
 let expandedRecordId = null;    // duty record row expanded to show full details in Member Detail
 let editingRecordId = null;     // duty record row currently being edited in Member Detail
 let expandedCategoryDate = null; // date card expanded in the admin's read-only Overview event view
+
 
 
 
@@ -201,12 +203,19 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const startDate = document.getElementById("evStartDate").value || null;
   const endDate = document.getElementById("evEndDate").value || null;
   const timeWindows = editingTimeWindows.filter(w => w.start && w.end);
+  const dateOverrides = {};
+  for (const date in editingDateOverrides) {
+    const blocks = (editingDateOverrides[date] || [])
+      .filter(b => b.start && b.end)
+      .map(b => ({ start: b.start, end: b.end, location: (b.location || "").trim() }));
+    if (blocks.length) dateOverrides[date] = blocks;
+  }
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   const manualOnly = document.getElementById("evManualOnly").checked;
   if (!name) return;
 
-  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, timeWindows, pic, compliance, manualOnly };
+  const payload = { name, location, category, maxHours, maxVolunteers, maxPerMember, startDate, endDate, timeWindows, dateOverrides, pic, compliance, manualOnly };
 
   if (editingEventId) {
     await updateDoc(doc(db, "events", editingEventId), payload);
@@ -226,7 +235,22 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   document.getElementById("evManualOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
+  editingDateOverrides = {};
+  renderDateOverrides();
 });
+
+document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
+  editingEventId = null;
+  document.getElementById("addEventBtn").textContent = "+ Add Event";
+  document.getElementById("cancelEditEventBtn").style.display = "none";
+  ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("evManualOnly").checked = false;
+  editingTimeWindows = [];
+  renderTimeWindowRows();
+  editingDateOverrides = {};
+  renderDateOverrides();
+});
+
 
 document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   editingEventId = null;
@@ -249,10 +273,15 @@ function startEditEvent(ev) {
   document.getElementById("evMaxPerMember").value = ev.maxPerMember != null ? ev.maxPerMember : "";
   document.getElementById("evStartDate").value = ev.startDate || "";
   document.getElementById("evEndDate").value = ev.endDate || "";
+
   editingTimeWindows = Array.isArray(ev.timeWindows) && ev.timeWindows.length
     ? ev.timeWindows.map(w => ({ start: w.start, end: w.end }))
     : (ev.dutyStart && ev.dutyEnd ? [{ start: ev.dutyStart, end: ev.dutyEnd }] : []);
   renderTimeWindowRows();
+  editingDateOverrides = ev.dateOverrides ? JSON.parse(JSON.stringify(ev.dateOverrides)) : {};
+  renderDateOverrides();
+  document.getElementById("evPic").value = ev.pic || "";
+
   document.getElementById("evPic").value = ev.pic || "";
   document.getElementById("evCompliance").value = ev.compliance || "";
   document.getElementById("evManualOnly").checked = !!ev.manualOnly;
@@ -286,6 +315,71 @@ document.getElementById("addTimeWindowBtn").addEventListener("click", () => {
   editingTimeWindows.push({ start: "", end: "" });
   renderTimeWindowRows();
 });
+
+// Renders the per-date override editor: one card per date with its own
+// list of {start, end, location} blocks. Location is optional per block —
+// member.js falls back to the event's main location when it's left blank.
+function renderDateOverrides() {
+  const el = document.getElementById("evDateOverrides");
+  if (!el) return;
+  const dates = Object.keys(editingDateOverrides).sort();
+  el.innerHTML = dates.map(date => {
+    const blocks = editingDateOverrides[date] || [];
+    const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    return `
+      <div class="card" style="margin-bottom:8px;">
+        <div class="row" style="align-items:center;">
+          <strong>${dateLabel}</strong>
+          <button type="button" class="danger" data-remove-override-date="${date}" style="padding:4px 10px;font-size:.75rem;width:auto;">Remove Date</button>
+        </div>
+        ${blocks.map((b, i) => `
+          <div class="row" style="margin-top:6px;">
+            <input type="time" data-override-start="${date}|${i}" value="${b.start || ""}">
+            <input type="time" data-override-end="${date}|${i}" value="${b.end || ""}">
+            <input type="text" data-override-location="${date}|${i}" value="${escapeHtml(b.location || "")}" placeholder="Location (optional — defaults to event location)">
+            <button type="button" class="danger" data-remove-override-block="${date}|${i}" style="padding:6px 10px;font-size:.75rem;">✕</button>
+          </div>`).join("")}
+        <button type="button" class="secondary" data-add-override-block="${date}" style="padding:4px 10px;font-size:.75rem;width:auto;margin-top:6px;">+ Add Block</button>
+      </div>`;
+  }).join("") || `<p class="muted" style="font-size:.8rem;">No per-date overrides yet.</p>`;
+
+  el.querySelectorAll("[data-override-start]").forEach(input => input.addEventListener("input", () => {
+    const [date, i] = input.dataset.overrideStart.split("|");
+    editingDateOverrides[date][+i].start = input.value;
+  }));
+  el.querySelectorAll("[data-override-end]").forEach(input => input.addEventListener("input", () => {
+    const [date, i] = input.dataset.overrideEnd.split("|");
+    editingDateOverrides[date][+i].end = input.value;
+  }));
+  el.querySelectorAll("[data-override-location]").forEach(input => input.addEventListener("input", () => {
+    const [date, i] = input.dataset.overrideLocation.split("|");
+    editingDateOverrides[date][+i].location = input.value;
+  }));
+  el.querySelectorAll("[data-add-override-block]").forEach(btn => btn.addEventListener("click", () => {
+    editingDateOverrides[btn.dataset.addOverrideBlock].push({ start: "", end: "", location: "" });
+    renderDateOverrides();
+  }));
+  el.querySelectorAll("[data-remove-override-block]").forEach(btn => btn.addEventListener("click", () => {
+    const [date, i] = btn.dataset.removeOverrideBlock.split("|");
+    editingDateOverrides[date].splice(+i, 1);
+    renderDateOverrides();
+  }));
+  el.querySelectorAll("[data-remove-override-date]").forEach(btn => btn.addEventListener("click", () => {
+    delete editingDateOverrides[btn.dataset.removeOverrideDate];
+    renderDateOverrides();
+  }));
+}
+
+document.getElementById("addOverrideDateBtn").addEventListener("click", () => {
+  const dateInput = document.getElementById("evOverrideDate");
+  const date = dateInput.value;
+  if (!date) return;
+  if (!editingDateOverrides[date]) editingDateOverrides[date] = [];
+  editingDateOverrides[date].push({ start: "", end: "", location: "" });
+  dateInput.value = "";
+  renderDateOverrides();
+});
+
 
 function dateRange(start, end) {
   const dates = [];
