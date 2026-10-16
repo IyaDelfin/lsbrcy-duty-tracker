@@ -338,6 +338,17 @@ function timeOptionsForWindow(win) {
   return times;
 }
 
+// The date's windows, limited to one location when `loc` is given.
+function windowsAt(ev, date, loc) {
+  const wins = timeWindowsForEvent(ev, date);
+  return loc ? wins.filter(w => w.location === loc) : wins;
+}
+
+// Distinct locations offered on a date (the picker only shows when > 1).
+function locationsForDate(ev, date) {
+  return [...new Set(timeWindowsForEvent(ev, date).map(w => w.location).filter(Boolean))];
+}
+
 // All start/end time options across every one of the event's windows for
 // a given date — e.g. two separate blocks of options for a 7–10 AM / 1–5 PM
 // split shift.
@@ -348,27 +359,38 @@ function timeOptionsForEvent(ev, date) {
 // Valid shift-start options for a given date: every window's own times,
 // minus each window's final time (can't start a shift with nowhere left
 // to go in that window).
-function startTimeOptionsForEvent(ev, date) {
-  return timeWindowsForEvent(ev, date).flatMap(w => timeOptionsForWindow(w).slice(0, -1));
+function startTimeOptionsForEvent(ev, date, loc) {
+  const all = windowsAt(ev, date, loc).flatMap(w => timeOptionsForWindow(w).slice(0, -1));
+  // De-duplicate (overlapping windows would otherwise list the same time twice) and sort.
+  return [...new Set(all)].sort();
 }
 
 // The specific window a given start time falls under on a given date, so
 // end-time options never cross into an unrelated block (e.g. a 9:30 AM
 // start in a 7–10 AM window offers 10:00 AM as the latest end, never
 // jumping to a 1–5 PM block).
-function windowContaining(ev, time, date) {
-  return timeWindowsForEvent(ev, date).find(w => timeOptionsForWindow(w).includes(time));
+function windowContaining(ev, time, date, loc) {
+  const wins = windowsAt(ev, date, loc);
+  // Prefer a window where this time is NOT the last option, so a start time that
+  // is also the END of another window (e.g. 5:00 PM ending a 12–5 PM block while
+  // starting a 5–9 PM block) picks the window it can actually start in.
+  return wins.find(w => { const t = timeOptionsForWindow(w); return t.includes(time) && t[t.length - 1] !== time; })
+      || wins.find(w => timeOptionsForWindow(w).includes(time));
 }
 
 // End-time options after `startTime` on a given date, confined to the same
 // window as the start and capped so the shift never exceeds the event's
 // max hours.
-function endTimeOptions(ev, startTime, date) {
-  const win = windowContaining(ev, startTime, date);
-  if (!win) return [];
-  const winTimes = timeOptionsForWindow(win);
-  const idx = winTimes.indexOf(startTime);
-  let after = winTimes.slice(idx + 1);
+function endTimeOptions(ev, startTime, date, loc) {
+  // Union of the later times from EVERY window this start time can begin in
+  // (overlapping windows, e.g. two locations at the same hours, both count).
+  let after = [];
+  for (const w of windowsAt(ev, date, loc)) {
+    const winTimes = timeOptionsForWindow(w);
+    const idx = winTimes.indexOf(startTime);
+    if (idx !== -1) after.push(...winTimes.slice(idx + 1));
+  }
+  after = [...new Set(after)].sort();
   if (ev.maxHours != null) after = after.filter(t => minutesBetween(startTime, t) <= ev.maxHours * 60);
   return after;
 }
@@ -428,7 +450,9 @@ function renderHourSlotTable(ev, list, date) {
   // common case) — but keep them split into two half-hour rows whenever a
   // reservation starts or ends on that half-hour mark (e.g. 10:30-11:30),
   // so a partial-hour booking doesn't visually "claim" the whole hour.
-  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start);
+  // Only count a volunteer toward a slot's location if they picked that location
+  // (older reservations with no location still count everywhere).
+  const occupantsOf = (slot) => list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start && (!v.location || !slot.location || v.location === slot.location));
   const sameOccupants = (a, b) => {
     const au = a.map(v => v.uid).sort();
     const bu = b.map(v => v.uid).sort();
@@ -478,11 +502,12 @@ function renderHourSlotTable(ev, list, date) {
 
 // True if every hour this [startTime, endTime) range touches still has
 // room under the event's max-volunteers-per-hour cap (no cap set = always ok).
-function hourCapacityOk(ev, list, startTime, endTime, date) {
+function hourCapacityOk(ev, list, startTime, endTime, date, loc) {
   if (ev.maxVolunteers == null) return true;
   for (const slot of hourSlotsForEvent(ev, date)) {
     if (!(startTime < slot.end && endTime > slot.start)) continue;
-    const count = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start).length;
+    if (loc && slot.location !== loc) continue;
+    const count = list.filter(v => v.startTime && v.endTime && v.startTime < slot.end && v.endTime > slot.start && (!v.location || !slot.location || v.location === slot.location)).length;
     if (count >= ev.maxVolunteers) return false;
   }
   return true;
@@ -520,7 +545,7 @@ function hasReservationOnDate(ev, date) {
 }
 
 
-async function reserveDate(ev, date, startTime, endTime) {
+async function reserveDate(ev, date, startTime, endTime, loc) {
   const entry = {
     uid: currentUser.uid,
     fullName: myProfile.fullName || myProfile.username,
@@ -530,8 +555,9 @@ async function reserveDate(ev, date, startTime, endTime) {
   if (startTime) entry.startTime = startTime;
   if (endTime) entry.endTime = endTime;
   if (startTime) {
-    const win = windowContaining(ev, startTime, date);
-    if (win && win.location) entry.location = win.location;
+    const win = windowContaining(ev, startTime, date, loc);
+    if (loc) entry.location = loc;
+    else if (win && win.location) entry.location = win.location;
   }
 
   await updateDoc(doc(db, "events", ev.id), {
@@ -576,12 +602,13 @@ const dates = eventDates(ev);
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
      // Today's start options drop any time that's already passed.
-    const startOptionsForDate = startTimeOptionsForEvent(ev, date).filter(t =>
+    const defaultLoc = locationsForDate(ev, date).length > 1 ? locationsForDate(ev, date)[0] : null;
+    const startOptionsForDate = startTimeOptionsForEvent(ev, date, defaultLoc).filter(t =>
       date !== today || combineDateTime(date, t).getTime() > Date.now()
     );
     const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
     const defaultStart = startOptionsForDate[0];
-    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date) : [];
+    const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date, defaultLoc) : [];
     
     const namesHtml = renderHourSlotTable(ev, list, date);
 
@@ -611,6 +638,12 @@ const dates = eventDates(ev);
     const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && !isPastDate && !pastCutoffToday && hasTimeRange) ? `
 
         
+        ${locationsForDate(ev, date).length > 1 ? `
+        <div class="row" style="margin-top:8px;">
+          <select data-location-pick="${date}">
+            ${locationsForDate(ev, date).map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join("")}
+          </select>
+        </div>` : ""}
         <div class="row" style="margin-top:8px;">
           <select data-start-time="${date}">
             ${startOptionsForDate.map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("")}
@@ -660,12 +693,30 @@ const isExpanded = expandedDate === date;
     renderEventDetails();
   }));
 
-  el.querySelectorAll('[data-start-time]').forEach(startSel => startSel.addEventListener("change", () => {
-    const date = startSel.dataset.startTime;
+  const selectedLoc = (date) => {
+    const s = el.querySelector(`[data-location-pick="${date}"]`);
+    return s ? s.value : null;
+  };
+  const fillEndOptions = (date) => {
+    const startSel = el.querySelector(`[data-start-time="${date}"]`);
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
-    if (!endSel) return;
-    endSel.innerHTML = endTimeOptions(ev, startSel.value, date)
+    if (!startSel || !endSel) return;
+    endSel.innerHTML = endTimeOptions(ev, startSel.value, date, selectedLoc(date))
       .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
+  };
+  el.querySelectorAll('[data-start-time]').forEach(startSel => startSel.addEventListener("change", () => {
+    fillEndOptions(startSel.dataset.startTime);
+  }));
+  // Changing the location rebuilds the start/end times for that location only.
+  el.querySelectorAll('[data-location-pick]').forEach(locSel => locSel.addEventListener("change", () => {
+    const date = locSel.dataset.locationPick;
+    const startSel = el.querySelector(`[data-start-time="${date}"]`);
+    if (!startSel) return;
+    const today = todayStr();
+    startSel.innerHTML = startTimeOptionsForEvent(ev, date, locSel.value)
+      .filter(t => date !== today || combineDateTime(date, t).getTime() > Date.now())
+      .map(t => `<option value="${t}">${formatTime12(t)}</option>`).join("");
+    fillEndOptions(date);
   }));
 
 
@@ -675,6 +726,7 @@ const isExpanded = expandedDate === date;
     const endSel = el.querySelector(`[data-end-time="${date}"]`);
     const startTime = startSel ? startSel.value : null;
     const endTime = endSel ? endSel.value : null;
+    const loc = selectedLoc(date);
     if (hasReservationOnDate(ev, date)) {
       alert("You already have a reservation on this date for this event. Only 1 reservation per date is allowed.");
       return;
@@ -694,13 +746,13 @@ const isExpanded = expandedDate === date;
         return;
       }     
       const dateList = (ev.volunteersByDate || {})[date] || [];
-      if (!hourCapacityOk(ev, dateList, startTime, endTime, date)) {
+      if (!hourCapacityOk(ev, dateList, startTime, endTime, date, loc)) {
         alert(`One or more hours in this range are already full (max ${ev.maxVolunteers} per hour).`);
         return;
       }
 
     }
-    reserveDate(ev, date, startTime, endTime);
+    reserveDate(ev, date, startTime, endTime, loc);
 
   }));
 
