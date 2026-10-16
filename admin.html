@@ -69,10 +69,15 @@
         <div id="evTimeWindows"></div>
         <button type="button" class="secondary" id="addTimeWindowBtn" style="width:auto;margin-bottom:12px;">+ Add Time Block</button>
 
-
-        
+        <label class="muted" style="display:block;margin-bottom:4px;">Per-date schedule overrides (optional — only for specific dates whose time blocks/locations differ from the ones above, e.g. a multi-day event with a different schedule each day)</label>
+        <div class="row">
+          <input id="evOverrideDate" type="date">
+          <button type="button" class="secondary" id="addOverrideDateBtn" style="width:auto;">+ Add Date Override</button>
+        </div>
+        <div id="evDateOverrides" style="margin-bottom:12px;"></div>
 
         <input id="evPic" placeholder="Default PIC / Lead">
+
         <input id="evCompliance" placeholder="Compliance rule/Note/Time of Event (e.g. Red Cross Uniform & ID Required)">
         <label class="muted" style="display:flex;align-items:center;gap:8px;margin:4px 0 12px;">
           <input type="checkbox" id="evManualOnly" style="width:auto;margin:0;"> Manual only (hidden from members — no self-reserve or clock-in; log hours from the member's detail page)
