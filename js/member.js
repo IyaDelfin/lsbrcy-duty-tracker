@@ -116,6 +116,17 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Dates this event runs on. Normally every day from startDate to endDate;
+// with "overridesOnly" set, just the dates that have a per-date override
+// (so a non-consecutive event like Oct 19 + Oct 21 skips Oct 20).
+function eventDates(ev) {
+  if (ev.overridesOnly && ev.dateOverrides) {
+    const keys = Object.keys(ev.dateOverrides).sort();
+    if (keys.length) return keys;
+  }
+  return ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+}
+
 function dateRange(start, end) {
   const dates = [];
   let cur = new Date(start + "T00:00:00");
@@ -130,6 +141,10 @@ function dateRange(start, end) {
 // "Mon, Oct 19 – Wed, Oct 21" (or just "Mon, Oct 19" for a one-day event)
 // summary of an event's date range, for display on event cards.
 function formatEventDateRange(ev) {
+  if (ev.overridesOnly && ev.dateOverrides) {
+    const ds = Object.keys(ev.dateOverrides).sort();
+    if (ds.length) return ds.map(d => new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })).join(" · ");
+  }
   if (!ev.startDate) return "";
   const startLabel = new Date(ev.startDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   if (!ev.endDate || ev.endDate === ev.startDate) return startLabel;
@@ -541,7 +556,7 @@ function renderEventDetails() {
   if (!ev) { el.innerHTML = ""; return; }
 
   const volunteersByDate = ev.volunteersByDate || {};
-  const dates = ev.startDate ? dateRange(ev.startDate, ev.endDate) : [];
+const dates = eventDates(ev);
   const myReservationCount = memberReservationCountForEvent(ev);
   const atMemberLimit = ev.maxPerMember != null && myReservationCount >= ev.maxPerMember;
   const today = todayStr();
