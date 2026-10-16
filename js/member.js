@@ -322,7 +322,7 @@ function timeWindowsForEvent(ev, date) {
   } else {
     windows = [];
   }
-  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "" }));
+  return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "", pic: (w.pic || "").trim() }));
 }
 
 // 30-minute-increment time options within a single {start,end} window.
@@ -398,7 +398,7 @@ function hourSlotsForEvent(ev, date) {
   for (const win of timeWindowsForEvent(ev, date)) {
     const opts = timeOptionsForWindow(win);
     for (let i = 0; i < opts.length - 1; i++) {
-      slots.push({ start: opts[i], end: opts[i + 1], location: win.location });
+      slots.push({ start: opts[i], end: opts[i + 1], location: win.location, pic: win.pic });
     }
   }
   return slots;
@@ -439,13 +439,13 @@ function renderHourSlotTable(ev, list, date) {
     const hourIndex = i / 2;
     const a = slots[i], b = slots[i + 1];
     const inA = occupantsOf(a);
-    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location }); continue; }
+    if (!b) { rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location, pic: a.pic }); continue; }
     const inB = occupantsOf(b);
-    if (sameOccupants(inA, inB) && a.location === b.location) {
-      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location });
+    if (sameOccupants(inA, inB) && a.location === b.location && a.pic === b.pic) {
+      rows.push({ start: a.start, end: b.end, occupants: inA, hourIndex, location: a.location, pic: a.pic });
     } else {
-      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location });
-      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location });
+      rows.push({ start: a.start, end: a.end, occupants: inA, hourIndex, location: a.location, pic: a.pic });
+      rows.push({ start: b.start, end: b.end, occupants: inB, hourIndex, location: b.location, pic: b.pic });
     }
   }
 
@@ -458,7 +458,7 @@ function renderHourSlotTable(ev, list, date) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}</span>
+<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
