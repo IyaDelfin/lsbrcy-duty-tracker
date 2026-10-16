@@ -85,15 +85,15 @@ function renderCategoryEvents() {
   const active = allEvents.filter(e => e.status === "active" && !e.manualOnly && (e.category || "clinic") === activeCategory);
 
     listEl.innerHTML = active.map(ev => `
-    <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
-      <div class="row" style="align-items:center;">
-        <div>
-          <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-        </div>
-        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
-      </div>
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+    <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
+      <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
+      <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
+      ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
+      <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0)} volunteer${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0) === 1 ? '' : 's'}</p>
+      ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
+    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+
+
 
   
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
@@ -121,6 +121,17 @@ function dateRange(start, end) {
   }
   return dates;
 }
+
+// "Mon, Oct 19 – Wed, Oct 21" (or just "Mon, Oct 19" for a one-day event)
+// summary of an event's date range, for display on event cards.
+function formatEventDateRange(ev) {
+  if (!ev.startDate) return "";
+  const startLabel = new Date(ev.startDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  if (!ev.endDate || ev.endDate === ev.startDate) return startLabel;
+  const endLabel = new Date(ev.endDate + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return `${startLabel} – ${endLabel}`;
+}
+
 
 function findTodaysReservation() {
   const today = todayStr();
