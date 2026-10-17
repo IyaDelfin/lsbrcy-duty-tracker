@@ -577,35 +577,50 @@ function renderEvents() {
   if (evStatusFilter !== "all") visible = visible.filter(ev => ev.status === evStatusFilter);
   if (evCategoryFilter !== "all") visible = visible.filter(ev => (ev.category || "clinic") === evCategoryFilter);
 
-  el.innerHTML = visible.map(ev => `
+  // Small label-over-value cell used in the event card's details grid.
+  const meta = (label, value) => (value === "" || value == null) ? "" : `
+        <div style="min-width:0;">
+          <div style="font-size:.66rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">${label}</div>
+          <div style="font-size:.9rem;font-weight:600;color:var(--text);overflow-wrap:anywhere;">${value}</div>
+        </div>`;
+  const btnStyle = "width:auto;margin:0;padding:7px 14px;font-size:.82rem;";
 
-    <div class="card">
-      <div class="row" style="align-items:center;">
-        <div>
-          <h3 style="margin-bottom:4px;">${escapeHtml(ev.name)}</h3>
-          <p class="muted" style="margin:0 0 6px;">${escapeHtml(ev.location || "")}</p>
+  el.innerHTML = visible.map(ev => {
+    const isOpen = attendanceOpenFor === ev.id;
+    const dateText = formatEventDateRange(ev);
+    const windowsText = formatTimeWindows(ev);
+    return `
+    <div class="card" style="padding:18px 20px;${isOpen ? "border-color:var(--red);" : ""}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div style="flex:1 1 260px;min-width:0;">
+          <h3 style="margin:0 0 4px;">${escapeHtml(ev.name)}</h3>
+          ${ev.location ? `<p class="muted" style="margin:0 0 10px;">📍 ${escapeHtml(ev.location)}</p>` : `<div style="height:8px;"></div>`}
           <span class="badge blue">${escapeHtml(CATEGORY_LABELS[ev.category] || "Uncategorized")}</span>
           <span class="badge ${ev.status === 'active' ? 'green' : 'blue'}">${ev.status}</span>
           ${ev.manualOnly ? `<span class="badge red">Manual Only</span>` : ""}
         </div>
-        <div style="text-align:right;">
-          <button class="secondary" data-action="toggle" data-id="${ev.id}" data-status="${ev.status}">
-            ${ev.status === 'active' ? 'Mark Completed' : 'Reopen'}
-          </button><br><br>
-          <button class="secondary" data-action="edit-event" data-id="${ev.id}">Edit</button>
-          <button class="danger" data-action="delete-event" data-id="${ev.id}">Delete</button><br><br>
-          <button class="secondary" data-action="toggle-attendance" data-id="${ev.id}">${attendanceOpenFor === ev.id ? "▲ Hide Attendance" : "📋 Attendance"}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="secondary" data-action="toggle-attendance" data-id="${ev.id}" style="${btnStyle}${isOpen ? "border-color:var(--red);color:var(--red);" : ""}">${isOpen ? "▲ Hide Attendance" : "📋 Attendance"}</button>
+          <button class="secondary" data-action="edit-event" data-id="${ev.id}" style="${btnStyle}">Edit</button>
+          <button class="secondary" data-action="toggle" data-id="${ev.id}" data-status="${ev.status}" style="${btnStyle}">${ev.status === 'active' ? 'Mark Completed' : 'Reopen'}</button>
+          <button class="danger" data-action="delete-event" data-id="${ev.id}" style="${btnStyle}">Delete</button>
         </div>
       </div>
-      ${ev.startDate ? `<p class="muted">Dates: ${escapeHtml(ev.startDate)}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + escapeHtml(ev.endDate) : ''}</p>` : ""}
-      ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
-      ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
-      ${ev.maxVolunteers != null ? `<p class="muted">Max members per hour: ${ev.maxVolunteers}${ev.volunteersByDate ? ' · Total reservations: ' + Object.values(ev.volunteersByDate).reduce((s,a)=>s+a.length,0) : ''}</p>` : ""}
-      ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
-        ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
-      ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
-      ${attendanceOpenFor === ev.id ? renderAttendanceSection(ev) : ""}
-    </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 18px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        ${meta("Dates", dateText ? escapeHtml(dateText) : "")}
+        ${meta("Duty hours", windowsText ? escapeHtml(windowsText) : "")}
+        ${meta("PIC", ev.pic ? escapeHtml(ev.pic) : "")}
+        ${meta("Max hours", ev.maxHours != null ? `${ev.maxHours} hr${ev.maxHours === 1 ? "" : "s"}` : "")}
+        ${meta("Max per hour", ev.maxVolunteers != null ? `${ev.maxVolunteers} member${ev.maxVolunteers === 1 ? "" : "s"}` : "")}
+        ${meta("Max days / member", ev.maxPerMember != null ? String(ev.maxPerMember) : "")}
+        ${meta("Reservations", String(volunteerCount(ev)))}
+      </div>
+
+      ${ev.compliance ? `<div style="margin-top:14px;padding:8px 12px;border-radius:8px;background:rgba(217,51,46,.1);border-left:3px solid var(--red);color:var(--red);font-size:.85rem;font-weight:600;">${escapeHtml(ev.compliance)}</div>` : ""}
+      ${isOpen ? renderAttendanceSection(ev) : ""}
+    </div>`;
+  }).join("") || `<p class="muted">No events match this filter.</p>`;
 
 
     el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
