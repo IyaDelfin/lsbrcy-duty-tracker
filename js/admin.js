@@ -731,6 +731,8 @@ function renderMemberDetail() {
       <p class="eyebrow">Member Details</p>
       <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
     </div>
+      <p class="muted">Username: <strong style="color:var(--text);">${escapeHtml(m.username || "–")}</strong></p>
+      <p class="muted">Password: <strong style="color:var(--text);">${escapeHtml(m.initialPassword || "–")}</strong></p>
       <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
       <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
       <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
