@@ -102,6 +102,7 @@ function initDashboard() {
     updateStats();
     renderMemberDetail();
     renderReports();
+    if (attendanceOpenFor) renderEvents();
   });
 
 
@@ -199,6 +200,7 @@ const dates = eventDates(ev);
     catch (err) { alert("Export failed: " + err.message); }
     finally { btn.disabled = false; }
   });
+
 }
 
 
@@ -591,7 +593,8 @@ function renderEvents() {
             ${ev.status === 'active' ? 'Mark Completed' : 'Reopen'}
           </button><br><br>
           <button class="secondary" data-action="edit-event" data-id="${ev.id}">Edit</button>
-          <button class="danger" data-action="delete-event" data-id="${ev.id}">Delete</button>
+          <button class="danger" data-action="delete-event" data-id="${ev.id}">Delete</button><br><br>
+          <button class="secondary" data-action="toggle-attendance" data-id="${ev.id}">${attendanceOpenFor === ev.id ? "▲ Hide Attendance" : "📋 Attendance"}</button>
         </div>
       </div>
       ${ev.startDate ? `<p class="muted">Dates: ${escapeHtml(ev.startDate)}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + escapeHtml(ev.endDate) : ''}</p>` : ""}
@@ -601,6 +604,7 @@ function renderEvents() {
       ${ev.maxPerMember != null ? `<p class="muted">Max days per member: ${ev.maxPerMember}</p>` : ""}
         ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+      ${attendanceOpenFor === ev.id ? renderAttendanceSection(ev) : ""}
     </div>`).join("") || `<p class="muted">No events match this filter.</p>`;
 
 
@@ -617,6 +621,20 @@ function renderEvents() {
       await deleteDoc(doc(db, "events", btn.dataset.id));
     }
   }));
+  el.querySelectorAll('[data-action="toggle-attendance"]').forEach(btn => btn.addEventListener("click", () => {
+    attendanceOpenFor = attendanceOpenFor === btn.dataset.id ? null : btn.dataset.id;
+    renderEvents();
+  }));
+  const exportAttendanceBtn = document.getElementById("exportAttendanceBtn");
+  if (exportAttendanceBtn) exportAttendanceBtn.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const ev = allEvents.find(x => x.id === attendanceOpenFor);
+    if (!ev) return;
+    btn.disabled = true;
+    try { await exportEventAttendanceToExcel(ev); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { btn.disabled = false; }
+  });
 }
 
 
@@ -1369,4 +1387,183 @@ function renderReports() {
   });
 }
 
+// ---------- EVENT ATTENDANCE SUMMARY (Overview tab, under Event Details) ----------
+let attendanceOpenFor = null; // id of the event whose attendance section is currently open
 
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function recordDate(r) {
+  return r.date || (r.timeIn ? localDateStr(new Date(r.timeIn)) : "");
+}
+
+function fmtClock(ts) {
+  return ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–";
+}
+
+// Status of one attendance row. `rec` = the duty record (if any), `v` = the reservation (if any).
+function attendanceStatus(rec, v, date, today, now) {
+  if (rec) {
+    if (rec.noShow) return { label: "No Show", cls: "red" };
+    if (rec.timeIn && !rec.timeOut) return { label: "On Duty", cls: "blue" };
+    return { label: "Completed", cls: "green" };
+  }
+  // Reservation with no duty record yet.
+  if (date > today) return { label: "Reserved", cls: "blue" };
+  if (date === today) {
+    if (!v.startTime) return { label: "Reserved", cls: "blue" };
+    const noShowAt = new Date(`${date}T${v.startTime}:00`).getTime() + 15 * 60000;
+    if (now < noShowAt) return { label: "Reserved", cls: "blue" };
+  }
+  // Past the no-show cutoff and never clocked in. (The member's own app turns this
+  // into a "No Show" record the next time they open it.)
+  return { label: "Not clocked in", cls: "orange" };
+}
+
+// One row per person per date: reservations merged with duty records for this event.
+// Records for cancelled reservations (early-out / no-show) and manual records still show up.
+function attendanceRowsForEvent(ev) {
+  const now = Date.now();
+  const today = localDateStr();
+  const records = allRecords.filter(r => r.eventId === ev.id);
+  const dateSet = new Set(eventDates(ev));
+  records.forEach(r => { const d = recordDate(r); if (d) dateSet.add(d); });
+
+  const rows = [];
+  for (const date of [...dateSet].sort()) {
+    const reservations = (ev.volunteersByDate || {})[date] || [];
+    const recs = records.filter(r => recordDate(r) === date);
+    const used = new Set();
+
+    for (const v of reservations) {
+      const rec = recs.find(r => r.uid === v.uid && !used.has(r.id));
+      if (rec) used.add(rec.id);
+      rows.push(makeAttendanceRow(date, v, rec, today, now));
+    }
+    for (const rec of recs) {
+      if (!used.has(rec.id)) rows.push(makeAttendanceRow(date, null, rec, today, now));
+    }
+  }
+  return rows;
+}
+
+function makeAttendanceRow(date, v, rec, today, now) {
+  const status = attendanceStatus(rec, v || {}, date, today, now);
+  const start = (rec && rec.shiftStart) || (v && v.startTime) || "";
+  const end = (rec && rec.shiftEnd) || (v && v.endTime) || "";
+  return {
+    date,
+    name: (v && v.fullName) || (rec && rec.fullName) || "",
+    studentNo: (v && v.studentNo) || (rec && rec.studentNo) || "",
+    committee: (v && v.committee) || (rec && rec.committee) || "",
+    location: (v && v.location) || "",
+    timeRange: start ? `${formatTime12(start)} – ${formatTime12(end)}` : "",
+    timeIn: rec ? rec.timeIn : null,
+    timeOut: rec ? rec.timeOut : null,
+    hours: rec && rec.hours != null ? rec.hours : null,
+    late: !!(rec && rec.late),
+    earlyOut: !!(rec && rec.earlyOut),
+    manual: !!(rec && rec.addedByAdmin),
+    status
+  };
+}
+
+function attendanceSummary(rows) {
+  return {
+    total: rows.length,
+    attended: rows.filter(r => r.status.label === "Completed" || r.status.label === "On Duty").length,
+    late: rows.filter(r => r.late).length,
+    earlyOut: rows.filter(r => r.earlyOut).length,
+    noShow: rows.filter(r => r.status.label === "No Show").length,
+    notClockedIn: rows.filter(r => r.status.label === "Not clocked in").length,
+    hours: rows.reduce((s, r) => s + (r.hours || 0), 0)
+  };
+}
+
+function renderAttendanceSection(ev) {
+  const rows = attendanceRowsForEvent(ev);
+  const s = attendanceSummary(rows);
+  const chip = (label, value, color) => `
+    <div style="flex:1;min-width:84px;text-align:center;padding:8px 6px;border:1px solid var(--border);border-radius:8px;">
+      <div style="font-size:1.15rem;font-weight:700;${color ? `color:var(--${color});` : ""}">${value}</div>
+      <div class="muted" style="font-size:.7rem;">${label}</div>
+    </div>`;
+
+  const dates = [...new Set(rows.map(r => r.date))];
+  const tablesHtml = dates.map(date => {
+    const dayRows = rows.filter(r => r.date === date);
+    const label = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    return `
+      <h4 style="margin:14px 0 6px;">${label} <span class="muted" style="font-weight:400;font-size:.8rem;">· ${dayRows.length}</span></h4>
+      <table>
+        <tr><th>Name</th><th>Committee</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
+        ${dayRows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.name)}</td>
+            <td>${escapeHtml(r.committee)}</td>
+            <td>${escapeHtml(r.timeRange || "–")}</td>
+            <td>${fmtClock(r.timeIn)}</td>
+            <td>${fmtClock(r.timeOut)}</td>
+            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
+            <td><span class="badge ${r.status.cls}">${r.status.label}</span>${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.manual ? ` <span class="badge blue">Manual</span>` : ""}</td>
+          </tr>`).join("")}
+      </table>`;
+  }).join("");
+
+  return `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div class="row" style="align-items:center;">
+        <h3 style="margin:0;">Attendance</h3>
+        <button class="secondary" id="exportAttendanceBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">⬇ Export Attendance</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+        ${chip("Reserved / logged", s.total)}
+        ${chip("Attended", s.attended, "green")}
+        ${chip("Late", s.late, "orange")}
+        ${chip("Early out", s.earlyOut, "blue")}
+        ${chip("No show", s.noShow, "red")}
+        ${chip("Not clocked in", s.notClockedIn, "orange")}
+        ${chip("Total hours", s.hours.toFixed(1))}
+      </div>
+      ${tablesHtml || `<p class="muted">No reservations or duty records for this event yet.</p>`}
+    </div>`;
+}
+
+async function exportEventAttendanceToExcel(ev) {
+  const rows = attendanceRowsForEvent(ev);
+  const s = attendanceSummary(rows);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Attendance");
+  const headers = ["Date", "Name", "Student No.", "Committee", "Shift", "Location", "In", "Out", "Hrs", "Status"];
+  sheet.columns = [{ width: 14 }, { width: 28 }, { width: 14 }, { width: 18 }, { width: 22 }, { width: 18 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 26 }];
+
+  const title = sheet.addRow([ev.name || "Event"]);
+  title.font = { bold: true, size: 14 };
+  sheet.mergeCells(title.number, 1, title.number, headers.length);
+  sheet.addRow([`Reserved/logged: ${s.total}  |  Attended: ${s.attended}  |  Late: ${s.late}  |  Early out: ${s.earlyOut}  |  No show: ${s.noShow}  |  Not clocked in: ${s.notClockedIn}  |  Total hours: ${s.hours.toFixed(1)}`]);
+  sheet.mergeCells(3, 1, 3, headers.length);
+  sheet.addRow([]);
+
+  const headerRow = sheet.addRow(headers);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
+
+  for (const r of rows) {
+    sheet.addRow([
+      r.date,
+      r.name,
+      r.studentNo,
+      r.committee,
+      r.timeRange,
+      r.location,
+      r.timeIn ? fmtClock(r.timeIn) : "",
+      r.timeOut ? fmtClock(r.timeOut) : "",
+      r.hours != null ? Number(r.hours.toFixed(1)) : "",
+      [r.status.label, r.late ? "Late" : "", r.earlyOut ? "Early Out" : "", r.manual ? "Manual" : ""].filter(Boolean).join(", ")
+    ]);
+  }
+
+  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
+  await downloadWorkbook(workbook, `${safeName}-attendance-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
