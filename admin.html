@@ -53,50 +53,121 @@
 
     <!-- EVENTS -->
     <div id="tab-events" class="tabpanel" style="display:none;">
-      <div class="card">
-        <h3>Create Event</h3>
-        <input id="evName" placeholder="Event name (e.g. Bloodletting Drive)">
-        <input id="evLocation" placeholder="Location (e.g. SHS Clinic)">
-        <select id="evCategory">
-          <option value="clinic">Clinic Duty</option>
-          <option value="office">Office Duty</option>
-        </select>
-        <input id="evMaxHours" type="number" min="0" step="0.5" placeholder="Max hours for this event (optional)">
-        <input id="evMaxVolunteers" type="number" min="0" step="1" placeholder="Max volunteers PER HOUR (optional; applies per day if no duty time windows are set)">
-        <input id="evMaxPerMember" type="number" min="0" step="1" placeholder="Max days one member can reserve for this event (optional)">
-
-        <label class="muted" style="display:block;margin-bottom:4px;">Event dates</label>
-        <div class="row">
-          <input id="evStartDate" type="date">
-          <input id="evEndDate" type="date">
+      <div class="card ev-form">
+        <div class="ev-form__head">
+          <h3>Create Event</h3>
+          <p>Fill in the basics first. Everything marked optional can be skipped.</p>
         </div>
-        
-        <label class="muted" style="display:block;margin-bottom:4px;">Duty time windows (optional — leave blank to skip time-based clock-in; add more than one block for a split shift, e.g. 7–10 AM and 1–5 PM)</label>
-        <div id="evTimeWindows"></div>
-        <button type="button" class="secondary" id="addTimeWindowBtn" style="width:auto;margin-bottom:12px;">+ Add Time Block</button>
 
-        <label class="muted" style="display:block;margin-bottom:4px;">Per-date schedule overrides (optional — only for specific dates whose time blocks/locations differ from the ones above, e.g. a multi-day event with a different schedule each day)</label>
-        <div class="row">
-          
-          <input id="evOverrideDate" type="date">
-          <button type="button" class="secondary" id="addOverrideDateBtn" style="width:auto;">+ Add Date Override</button>
+        <!-- 1 · BASICS -->
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">1</span> Basics</h4>
+          <div class="ev-grid">
+            <div class="ev-field ev-span-2">
+              <label for="evName">Event name</label>
+              <input id="evName" placeholder="e.g. Bloodletting Drive">
+            </div>
+            <div class="ev-field">
+              <label for="evLocation">Main location</label>
+              <input id="evLocation" placeholder="e.g. SHS Clinic">
+            </div>
+            <div class="ev-field">
+              <label for="evCategory">Category</label>
+              <select id="evCategory">
+                <option value="clinic">Clinic Duty</option>
+                <option value="office">Office Duty</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2 · LIMITS -->
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">2</span> Limits <span class="ev-opt">optional</span></h4>
+          <div class="ev-grid ev-grid--3">
+            <div class="ev-field">
+              <label for="evMaxHours">Max hours</label>
+              <input id="evMaxHours" type="number" min="0" step="0.5" placeholder="No limit">
+              <small>Longest shift one member can take</small>
+            </div>
+            <div class="ev-field">
+              <label for="evMaxVolunteers">Volunteers per hour</label>
+              <input id="evMaxVolunteers" type="number" min="0" step="1" placeholder="No limit">
+              <small>Applies per time slot</small>
+            </div>
+            <div class="ev-field">
+              <label for="evMaxPerMember">Days per member</label>
+              <input id="evMaxPerMember" type="number" min="0" step="1" placeholder="No limit">
+              <small>Max days one member can reserve</small>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3 · SCHEDULE -->
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">3</span> Schedule</h4>
+
+          <div class="ev-field">
+            <label>Event dates</label>
+            <div class="ev-grid">
+              <input id="evStartDate" type="date" aria-label="Start date">
+              <input id="evEndDate" type="date" aria-label="End date">
+            </div>
+          </div>
+
+          <div class="ev-box">
+            <div class="ev-box__head">
+              <div>
+                <strong>Duty time blocks</strong> <span class="ev-opt">optional</span>
+                <small>Leave empty to skip time-based clock-in. Add more than one for a split shift (e.g. 7–10 AM and 1–5 PM).</small>
+              </div>
+            </div>
+            <div id="evTimeWindows"></div>
+            <button type="button" class="secondary ev-add" id="addTimeWindowBtn">+ Add Time Block</button>
+          </div>
+
+          <div class="ev-box">
+            <div class="ev-box__head">
+              <div>
+                <strong>Per-date overrides</strong> <span class="ev-opt">optional</span>
+                <small>For specific dates whose time blocks, locations or PIC differ from the above (e.g. a multi-day event with a different schedule each day).</small>
+              </div>
+            </div>
+            <div class="ev-addrow">
+              <input id="evOverrideDate" type="date" aria-label="Date to override">
+              <button type="button" class="secondary ev-add" id="addOverrideDateBtn">+ Add Date Override</button>
+            </div>
+            <div id="evDateOverrides"></div>
+            <label class="ev-switch">
+              <input type="checkbox" id="evOverridesOnly">
+              <span>Only use the override dates above<small>Skips the other days in the Event dates range, so the range becomes optional.</small></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- 4 · DETAILS -->
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">4</span> Details <span class="ev-opt">optional</span></h4>
+          <div class="ev-grid">
+            <div class="ev-field">
+              <label for="evPic">Default PIC / Lead</label>
+              <input id="evPic" placeholder="e.g. Nurse Dani">
+            </div>
+            <div class="ev-field">
+              <label for="evCompliance">Compliance rule / note</label>
+              <input id="evCompliance" placeholder="e.g. Red Cross Uniform & ID Required">
+            </div>
+          </div>
+          <label class="ev-switch">
+            <input type="checkbox" id="evManualOnly">
+            <span>Manual only<small>Hidden from members: no self-reserve or clock-in. Log hours from the member's detail page.</small></span>
+          </label>
+        </section>
+
+        <div class="ev-actions">
+          <button class="primary" id="addEventBtn">+ Add Event</button>
+          <button class="secondary" id="cancelEditEventBtn" style="display:none;">Cancel Edit</button>
         </div>
-        
-        <div id="evDateOverrides" style="margin-bottom:12px;"></div>
-        <label class="muted" style="display:flex;align-items:center;gap:8px;margin:4px 0 12px;">
-          <input type="checkbox" id="evOverridesOnly" style="width:auto;margin:0;"> Only use the dates listed above (skip the other days in the Event dates range — the range becomes optional)
-        </label>
-
-        <input id="evPic" placeholder="Default PIC / Lead">
-
-        <input id="evCompliance" placeholder="Compliance rule/Note/Time of Event (e.g. Red Cross Uniform & ID Required)">
-        <label class="muted" style="display:flex;align-items:center;gap:8px;margin:4px 0 12px;">
-          <input type="checkbox" id="evManualOnly" style="width:auto;margin:0;"> Manual only (hidden from members — no self-reserve or clock-in; log hours from the member's detail page)
-        </label>
-            <button class="primary" id="addEventBtn">+ Add Event</button>
-            <button class="secondary" id="cancelEditEventBtn" style="display:none;">Cancel Edit</button>
-
-      
       </div>
       <div class="tabs" id="evStatusTabs">
         <button data-status="active" class="active">Active</button>
