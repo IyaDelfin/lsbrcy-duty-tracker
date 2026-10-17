@@ -93,6 +93,7 @@ function initDashboard() {
     allMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderMembers();
     updateStats();
+    renderReports();
   });
 
     onSnapshot(query(collection(db, "dutyRecords"), orderBy("createdAt", "desc")), (snap) => {
@@ -100,6 +101,7 @@ function initDashboard() {
     renderRecords();
     updateStats();
     renderMemberDetail();
+    renderReports();
   });
 
 
@@ -110,6 +112,7 @@ function updateStats() {
   document.getElementById("statEvents").textContent = allEvents.length;
    document.getElementById("statRecords").textContent = allRecords.length;
 }
+
 // Total reservations across all dates of an event (same count the member view shows).
 function volunteerCount(ev) {
   return Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0);
@@ -124,7 +127,7 @@ function renderCategoryEvents() {
     <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
       <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-           ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
+      ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
       <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${volunteerCount(ev)} volunteer${volunteerCount(ev) === 1 ? "" : "s"}</p>
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
@@ -180,7 +183,6 @@ const dates = eventDates(ev);
       ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
       <button class="secondary" id="exportEventBtn" style="width:auto;margin-top:10px;padding:6px 14px;font-size:.8rem;">⬇ Export Reservations to Excel</button>
-
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
@@ -188,18 +190,16 @@ const dates = eventDates(ev);
     const date = div.dataset.toggleCatDate;
     expandedCategoryDate = expandedCategoryDate === date ? null : date;
     renderCategoryEventDetails();
+  }));
 
-      document.getElementById("exportEventBtn").addEventListener("click", async (e) => {
+  document.getElementById("exportEventBtn").addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
     try { await exportEventReservationsToExcel(ev); }
     catch (err) { alert("Export failed: " + err.message); }
     finally { btn.disabled = false; }
   });
-
-  }));
 }
-
 
 
 
@@ -558,90 +558,6 @@ function renderHourSlotTable(ev, list, date) {
       }).join("")}
     </div>`;
 }
-
-
-// PIC for a reservation = PIC of the duty block (per-date override) it starts in.
-function picForReservation(ev, date, v) {
-  const w = timeWindowsForEvent(ev, date).find(w =>
-    v.startTime >= w.start && v.startTime < w.end &&
-    (!v.location || !w.location || v.location === w.location));
-  return w ? (w.pic || "") : "";
-}
-
-// Fills one worksheet with an event's reservations, one table per date.
-function addEventReservationsSheet(workbook, ev) {
-  const sheet = workbook.addWorksheet(uniqueSheetName(workbook, sanitizeSheetName(ev.name || "Event")));
-  const headers = ["Time", "Location", "PIC", "Name", "Student No.", "Committee"];
-  sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 28 }, { width: 14 }, { width: 18 }];
-
-  const titleRow = sheet.addRow([`${ev.name || "Event"} (${CATEGORY_LABELS[ev.category || "clinic"] || ""})`]);
-  titleRow.font = { bold: true, size: 14 };
-  sheet.mergeCells(titleRow.number, 1, titleRow.number, headers.length);
-  sheet.addRow([]);
-
-  for (const date of eventDates(ev)) {
-    const list = [...((ev.volunteersByDate || {})[date] || [])]
-      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "") || (a.fullName || "").localeCompare(b.fullName || ""));
-    const label = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
-
-    const dateRow = sheet.addRow([`${label} — ${list.length} volunteer${list.length === 1 ? "" : "s"}`]);
-    dateRow.font = { bold: true, size: 12 };
-    sheet.mergeCells(dateRow.number, 1, dateRow.number, headers.length);
-
-    const headerRow = sheet.addRow(headers);
-    headerRow.font = { bold: true };
-    headerRow.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
-
-    if (!list.length) sheet.addRow(["No reservations"]);
-    for (const v of list) {
-      sheet.addRow([
-        v.startTime ? `${formatTime12(v.startTime)} – ${formatTime12(v.endTime)}` : "",
-        v.location || "",
-        picForReservation(ev, date, v),
-        v.fullName || "",
-        v.studentNo || "",
-        v.committee || ""
-      ]);
-    }
-    sheet.addRow([]);
-  }
-}
-
-async function downloadWorkbook(workbook, filename) {
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
-
-// One event → one file.
-async function exportEventReservationsToExcel(ev) {
-  const workbook = new ExcelJS.Workbook();
-  addEventReservationsSheet(workbook, ev);
-  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
-  await downloadWorkbook(workbook, `${safeName}-reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
-}
-
-// All active events → one file, one tab per event.
-async function exportAllActiveEventsToExcel() {
-  const active = allEvents
-    .filter(e => e.status === "active")
-    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
-  if (!active.length) { alert("No active events to export."); return; }
-  const workbook = new ExcelJS.Workbook();
-  active.forEach(ev => addEventReservationsSheet(workbook, ev));
-  await downloadWorkbook(workbook, `LSBRCY-Event-Reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
-}
-
-
-
-
 
 // "7:00 AM – 10:00 AM, 1:00 PM – 5:00 PM" style summary of an event's duty
 // time windows. Falls back to the old single dutyStart/dutyEnd pair for
@@ -1195,25 +1111,6 @@ function uniqueSheetName(workbook, base) {
   return name;
 }
 
-(function addExportAllButton() {
-  const tabs = document.getElementById("categoryTabs");
-  const card = tabs && tabs.closest(".card");
-  if (!card) return;
-  card.style.position = "relative";
-  const btn = document.createElement("button");
-  btn.id = "exportAllEventsBtn";
-  btn.className = "secondary";
-  btn.textContent = "⬇ Export All";
-  btn.style.cssText = "position:absolute;top:16px;right:16px;width:auto;padding:6px 14px;font-size:.8rem;";
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    try { await exportAllActiveEventsToExcel(); }
-    catch (err) { alert("Export failed: " + err.message); }
-    finally { btn.disabled = false; }
-  });
-  card.appendChild(btn);
-})();
-
 
 // Converts a stored timestamp (ms) to "HH:MM" in local time, for
 // pre-filling a <input type="time"> when editing a duty record.
@@ -1238,4 +1135,238 @@ function formatTime12(hhmm) {
   if (h < 12) return `${h}:${mm} AM`;
   return `${h - 12}:${mm} PM`;
 }
+
+
+// ---------- EVENT RESERVATION EXPORTS (Overview tab) ----------
+// PIC for a reservation = PIC of the duty block (per-date override) it starts in.
+function picForReservation(ev, date, v) {
+  const w = timeWindowsForEvent(ev, date).find(w =>
+    v.startTime >= w.start && v.startTime < w.end &&
+    (!v.location || !w.location || v.location === w.location));
+  return w ? (w.pic || "") : "";
+}
+
+// Fills one worksheet with an event's reservations, one table per date.
+function addEventReservationsSheet(workbook, ev) {
+  const sheet = workbook.addWorksheet(uniqueSheetName(workbook, sanitizeSheetName(ev.name || "Event")));
+  const headers = ["Time", "Location", "PIC", "Name", "Student No.", "Committee"];
+  sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 28 }, { width: 14 }, { width: 18 }];
+
+  const titleRow = sheet.addRow([`${ev.name || "Event"} (${CATEGORY_LABELS[ev.category || "clinic"] || ""})`]);
+  titleRow.font = { bold: true, size: 14 };
+  sheet.mergeCells(titleRow.number, 1, titleRow.number, headers.length);
+  sheet.addRow([]);
+
+  for (const date of eventDates(ev)) {
+    const list = [...((ev.volunteersByDate || {})[date] || [])]
+      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "") || (a.fullName || "").localeCompare(b.fullName || ""));
+    const label = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+
+    const dateRow = sheet.addRow([`${label} — ${list.length} volunteer${list.length === 1 ? "" : "s"}`]);
+    dateRow.font = { bold: true, size: 12 };
+    sheet.mergeCells(dateRow.number, 1, dateRow.number, headers.length);
+
+    const headerRow = sheet.addRow(headers);
+    headerRow.font = { bold: true };
+    headerRow.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
+
+    if (!list.length) sheet.addRow(["No reservations"]);
+    for (const v of list) {
+      sheet.addRow([
+        v.startTime ? `${formatTime12(v.startTime)} – ${formatTime12(v.endTime)}` : "",
+        v.location || "",
+        picForReservation(ev, date, v),
+        v.fullName || "",
+        v.studentNo || "",
+        v.committee || ""
+      ]);
+    }
+    sheet.addRow([]);
+  }
+}
+
+async function downloadWorkbook(workbook, filename) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// One event -> one file.
+async function exportEventReservationsToExcel(ev) {
+  const workbook = new ExcelJS.Workbook();
+  addEventReservationsSheet(workbook, ev);
+  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
+  await downloadWorkbook(workbook, `${safeName}-reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// All active events -> one file, one tab per event.
+async function exportAllActiveEventsToExcel() {
+  const active = allEvents
+    .filter(e => e.status === "active")
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+  if (!active.length) { alert("No active events to export."); return; }
+  const workbook = new ExcelJS.Workbook();
+  active.forEach(ev => addEventReservationsSheet(workbook, ev));
+  await downloadWorkbook(workbook, `LSBRCY-Event-Reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// "Export All" button, upper right of the Available Events card.
+(function addExportAllButton() {
+  const tabs = document.getElementById("categoryTabs");
+  const card = tabs && tabs.closest(".card");
+  if (!card) return;
+  card.style.position = "relative";
+  const btn = document.createElement("button");
+  btn.id = "exportAllEventsBtn";
+  btn.className = "secondary";
+  btn.textContent = "⬇ Export All";
+  btn.style.cssText = "position:absolute;top:16px;right:16px;width:auto;padding:6px 14px;font-size:.8rem;";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try { await exportAllActiveEventsToExcel(); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { btn.disabled = false; }
+  });
+  card.appendChild(btn);
+})();
+
+// ---------- REPORTS TAB (hours by committee + leaderboard) ----------
+let reportCommittee = "all";
+let reportShowAll = false;
+
+function computeHoursReport() {
+  const memberById = new Map(allMembers.map(m => [m.id, m]));
+  const committeeOf = (r) => (memberById.get(r.uid) || {}).committee || r.committee || "Unassigned";
+
+  const byCommittee = new Map();
+  const bucket = (name) => {
+    if (!byCommittee.has(name)) byCommittee.set(name, { name, hours: 0, records: 0, late: 0, noShow: 0, members: new Set() });
+    return byCommittee.get(name);
+  };
+  allMembers.filter(m => m.role !== "admin").forEach(m => bucket(m.committee || "Unassigned").members.add(m.id));
+
+  const byMember = new Map();
+  for (const r of allRecords) {
+    const committee = committeeOf(r);
+    const c = bucket(committee);
+    const h = r.hours || 0;           // active (not clocked out) and no-show records count as 0
+    c.hours += h; c.records += 1;
+    if (r.late) c.late++;
+    if (r.noShow) c.noShow++;
+
+    const m = memberById.get(r.uid);
+    const entry = byMember.get(r.uid) || {
+      name: (m && (m.fullName || m.username)) || r.fullName || "",
+      studentNo: (m && m.studentNo) || r.studentNo || "",
+      committee, hours: 0
+    };
+    entry.hours += h;
+    byMember.set(r.uid, entry);
+  }
+  return {
+    committees: [...byCommittee.values()].sort((a, b) => b.hours - a.hours),
+    members: [...byMember.values()]
+  };
+}
+
+function renderReports() {
+  const el = document.getElementById("reportsContent");
+  if (!el) return;
+  const { committees, members } = computeHoursReport();
+  const totalHours = committees.reduce((s, c) => s + c.hours, 0);
+  const maxHours = Math.max(0, ...committees.map(c => c.hours));
+  if (reportCommittee !== "all" && !committees.some(c => c.name === reportCommittee)) reportCommittee = "all";
+
+  const ranked = members
+    .filter(m => m.hours > 0 && (reportCommittee === "all" || m.committee === reportCommittee))
+    .sort((a, b) => b.hours - a.hours);
+  const board = reportShowAll ? ranked : ranked.slice(0, 10);
+  const medal = (i) => ["🥇", "🥈", "🥉"][i] || (i + 1);
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h3 style="margin:0;">Hours by Committee</h3>
+        <button class="secondary" id="exportReportBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">⬇ Export</button>
+      </div>
+      <p class="muted">Total duty hours across all committees: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
+      <table>
+        <tr><th>Committee</th><th>Members</th><th>Hours</th><th>Avg / Member</th><th>Late</th><th>No Show</th></tr>
+        ${committees.map(c => `
+          <tr>
+            <td>${escapeHtml(c.name)}
+              <div style="height:4px;border-radius:2px;margin-top:4px;background:var(--red);width:${maxHours ? Math.round(c.hours / maxHours * 100) : 0}%;"></div>
+            </td>
+            <td>${c.members.size}</td>
+            <td><strong>${c.hours.toFixed(1)}</strong></td>
+            <td>${c.members.size ? (c.hours / c.members.size).toFixed(1) : "–"}</td>
+            <td>${c.late}</td>
+            <td>${c.noShow}</td>
+          </tr>`).join("")}
+      </table>
+      ${committees.length === 0 ? `<p class="muted">No data yet.</p>` : ""}
+    </div>
+
+    <div class="card">
+      <h3>Leaderboard</h3>
+      <div class="tabs" id="reportCommitteeTabs">
+        ${["all", ...committees.map(c => c.name)].map(n =>
+          `<button data-rc="${escapeHtml(n)}" class="${reportCommittee === n ? 'active' : ''}">${n === "all" ? "All Committees" : escapeHtml(n)}</button>`).join("")}
+      </div>
+      <table>
+        <tr><th>#</th><th>Name</th><th>Student No.</th><th>Committee</th><th>Hours</th></tr>
+        ${board.map((m, i) => `
+          <tr>
+            <td>${medal(i)}</td>
+            <td>${escapeHtml(m.name)}</td>
+            <td>${escapeHtml(m.studentNo)}</td>
+            <td>${escapeHtml(m.committee)}</td>
+            <td><strong>${m.hours.toFixed(1)}</strong></td>
+          </tr>`).join("")}
+      </table>
+      ${board.length === 0 ? `<p class="muted">No hours logged yet.</p>` : ""}
+      ${ranked.length > 10 ? `<button class="secondary" id="toggleBoardBtn" style="width:auto;padding:6px 14px;font-size:.8rem;margin-top:8px;">${reportShowAll ? "Show top 10" : `Show all (${ranked.length})`}</button>` : ""}
+    </div>`;
+
+  el.querySelectorAll("[data-rc]").forEach(b => b.addEventListener("click", () => {
+    reportCommittee = b.dataset.rc;
+    reportShowAll = false;
+    renderReports();
+  }));
+  const toggle = document.getElementById("toggleBoardBtn");
+  if (toggle) toggle.addEventListener("click", () => { reportShowAll = !reportShowAll; renderReports(); });
+
+  document.getElementById("exportReportBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const wb = new ExcelJS.Workbook();
+
+      const s1 = wb.addWorksheet("By Committee");
+      s1.columns = [{ width: 24 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 8 }, { width: 10 }];
+      s1.addRow(["Committee", "Members", "Hours", "Avg / Member", "Late", "No Show"]).font = { bold: true };
+      committees.forEach(c => s1.addRow([c.name, c.members.size, +c.hours.toFixed(1), c.members.size ? +(c.hours / c.members.size).toFixed(1) : "", c.late, c.noShow]));
+      s1.addRow(["Total", "", +totalHours.toFixed(1)]).font = { bold: true };
+
+      const s2 = wb.addWorksheet("Leaderboard");
+      s2.columns = [{ width: 6 }, { width: 28 }, { width: 14 }, { width: 22 }, { width: 10 }];
+      s2.addRow(["Rank", "Name", "Student No.", "Committee", "Hours"]).font = { bold: true };
+      ranked.forEach((m, i) => s2.addRow([i + 1, m.name, m.studentNo, m.committee, +m.hours.toFixed(1)]));
+
+      await downloadWorkbook(wb, `LSBRCY-Hours-Report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (err) {
+      alert("Export failed: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 
