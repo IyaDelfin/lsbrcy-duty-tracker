@@ -636,7 +636,8 @@ document.getElementById("addMemberBtn").addEventListener("click", async () => {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
 
     await setDoc(doc(db, "users", cred.user.uid), {
-      fullName, studentNo, committee, username, role, createdAt: Date.now()
+      fullName, studentNo, committee, username, role, createdAt: Date.now(),
+      initialPassword: password
     });
 
     await signOut(secondaryAuth);
