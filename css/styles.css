@@ -177,8 +177,8 @@ tr:last-child td { border-bottom: none; }
   padding: 2px 8px; border-radius: 999px;
 }
 
-.ev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ev-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.ev-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ev-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ev-span-2 { grid-column: 1 / -1; }
 .ev-field { display: flex; flex-direction: column; min-width: 0; margin-bottom: 12px; }
 .ev-grid .ev-field { margin-bottom: 0; }
@@ -198,7 +198,7 @@ tr:last-child td { border-bottom: none; }
 }
 .ev-box__head { margin-bottom: 10px; font-size: .9rem; }
 .ev-box__head small { display: block; color: var(--muted); font-size: .75rem; margin-top: 4px; line-height: 1.35; }
-.ev-addrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 10px; }
+.ev-addrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-bottom: 10px; }
 .ev-add { width: auto; margin: 0; padding: 10px 14px; font-size: .85rem; }
 
 /* time-block rows and date-override cards (built by admin.js) */
@@ -240,3 +240,13 @@ tr:last-child td { border-bottom: none; }
   .ev-form input[type="time"] { padding-left: 10px; padding-right: 6px; font-size: .95rem; }
   .ev-actions { flex-direction: column-reverse; }
 }
+
+/* Fix: date/time inputs (esp. iPad/Safari) have a built-in minimum width that made boxes overflow and overlap */
+.ev-grid > *, .ev-addrow > * { min-width: 0; }
+.ev-form input[type="date"], .ev-form input[type="time"] {
+  min-width: 0; max-width: 100%; width: 100%;
+  -webkit-appearance: none; appearance: none;
+  min-height: 48px; display: block;
+}
+.ev-form input[type="date"]::-webkit-date-and-time-value,
+.ev-form input[type="time"]::-webkit-date-and-time-value { text-align: left; }
