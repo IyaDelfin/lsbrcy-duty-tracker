@@ -179,6 +179,8 @@ const dates = eventDates(ev);
       ${ev.maxHours != null ? `<p class="muted">Max hours: ${ev.maxHours}</p>` : ""}
       ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
       ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+      <button class="secondary" id="exportEventBtn" style="width:auto;margin-top:10px;padding:6px 14px;font-size:.8rem;">⬇ Export Reservations to Excel</button>
+
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
@@ -186,8 +188,18 @@ const dates = eventDates(ev);
     const date = div.dataset.toggleCatDate;
     expandedCategoryDate = expandedCategoryDate === date ? null : date;
     renderCategoryEventDetails();
+
+      document.getElementById("exportEventBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try { await exportEventReservationsToExcel(ev); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { btn.disabled = false; }
+  });
+
   }));
 }
+
 
 
 
@@ -546,6 +558,70 @@ function renderHourSlotTable(ev, list, date) {
       }).join("")}
     </div>`;
 }
+
+
+// PIC for a reservation = PIC of the duty block (per-date override) it starts in.
+function picForReservation(ev, date, v) {
+  const w = timeWindowsForEvent(ev, date).find(w =>
+    v.startTime >= w.start && v.startTime < w.end &&
+    (!v.location || !w.location || v.location === w.location));
+  return w ? (w.pic || "") : "";
+}
+
+async function exportEventReservationsToExcel(ev) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(sanitizeSheetName(ev.name || "Event"));
+  const headers = ["Time", "Location", "PIC", "Name", "Student No.", "Committee"];
+  sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 28 }, { width: 14 }, { width: 18 }];
+
+  const titleRow = sheet.addRow([ev.name || "Event"]);
+  titleRow.font = { bold: true, size: 14 };
+  sheet.mergeCells(titleRow.number, 1, titleRow.number, headers.length);
+  sheet.addRow([]);
+
+  for (const date of eventDates(ev)) {
+    const list = [...((ev.volunteersByDate || {})[date] || [])]
+      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "") || (a.fullName || "").localeCompare(b.fullName || ""));
+    const label = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+
+    const dateRow = sheet.addRow([`${label} — ${list.length} volunteer${list.length === 1 ? "" : "s"}`]);
+    dateRow.font = { bold: true, size: 12 };
+    sheet.mergeCells(dateRow.number, 1, dateRow.number, headers.length);
+
+    const headerRow = sheet.addRow(headers);
+    headerRow.font = { bold: true };
+    headerRow.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
+
+    if (!list.length) sheet.addRow(["No reservations"]);
+    for (const v of list) {
+      sheet.addRow([
+        v.startTime ? `${formatTime12(v.startTime)} – ${formatTime12(v.endTime)}` : "",
+        v.location || "",
+        picForReservation(ev, date, v),
+        v.fullName || "",
+        v.studentNo || "",
+        v.committee || ""
+      ]);
+    }
+    sheet.addRow([]); // spacer between dates
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${safeName}-reservations-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+
+
+
 
 // "7:00 AM – 10:00 AM, 1:00 PM – 5:00 PM" style summary of an event's duty
 // time windows. Falls back to the old single dutyStart/dutyEnd pair for
