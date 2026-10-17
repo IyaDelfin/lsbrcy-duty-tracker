@@ -568,13 +568,13 @@ function picForReservation(ev, date, v) {
   return w ? (w.pic || "") : "";
 }
 
-async function exportEventReservationsToExcel(ev) {
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(sanitizeSheetName(ev.name || "Event"));
+// Fills one worksheet with an event's reservations, one table per date.
+function addEventReservationsSheet(workbook, ev) {
+  const sheet = workbook.addWorksheet(uniqueSheetName(workbook, sanitizeSheetName(ev.name || "Event")));
   const headers = ["Time", "Location", "PIC", "Name", "Student No.", "Committee"];
   sheet.columns = [{ width: 22 }, { width: 18 }, { width: 18 }, { width: 28 }, { width: 14 }, { width: 18 }];
 
-  const titleRow = sheet.addRow([ev.name || "Event"]);
+  const titleRow = sheet.addRow([`${ev.name || "Event"} (${CATEGORY_LABELS[ev.category || "clinic"] || ""})`]);
   titleRow.font = { bold: true, size: 14 };
   sheet.mergeCells(titleRow.number, 1, titleRow.number, headers.length);
   sheet.addRow([]);
@@ -603,20 +603,40 @@ async function exportEventReservationsToExcel(ev) {
         v.committee || ""
       ]);
     }
-    sheet.addRow([]); // spacer between dates
+    sheet.addRow([]);
   }
+}
 
+async function downloadWorkbook(workbook, filename) {
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${safeName}-reservations-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// One event → one file.
+async function exportEventReservationsToExcel(ev) {
+  const workbook = new ExcelJS.Workbook();
+  addEventReservationsSheet(workbook, ev);
+  const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
+  await downloadWorkbook(workbook, `${safeName}-reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// All active events → one file, one tab per event.
+async function exportAllActiveEventsToExcel() {
+  const active = allEvents
+    .filter(e => e.status === "active")
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+  if (!active.length) { alert("No active events to export."); return; }
+  const workbook = new ExcelJS.Workbook();
+  active.forEach(ev => addEventReservationsSheet(workbook, ev));
+  await downloadWorkbook(workbook, `LSBRCY-Event-Reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 
@@ -1174,6 +1194,25 @@ function uniqueSheetName(workbook, base) {
   }
   return name;
 }
+
+(function addExportAllButton() {
+  const tabs = document.getElementById("categoryTabs");
+  const card = tabs && tabs.closest(".card");
+  if (!card) return;
+  card.style.position = "relative";
+  const btn = document.createElement("button");
+  btn.id = "exportAllEventsBtn";
+  btn.className = "secondary";
+  btn.textContent = "⬇ Export All";
+  btn.style.cssText = "position:absolute;top:16px;right:16px;width:auto;padding:6px 14px;font-size:.8rem;";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try { await exportAllActiveEventsToExcel(); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { btn.disabled = false; }
+  });
+  card.appendChild(btn);
+})();
 
 
 // Converts a stored timestamp (ms) to "HH:MM" in local time, for
