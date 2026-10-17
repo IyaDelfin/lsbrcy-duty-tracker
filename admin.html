@@ -151,7 +151,7 @@
           <div class="ev-grid">
             <div class="ev-field">
               <label for="evPic">Default PIC / Lead</label>
-              <input id="evPic" placeholder="e.g. Strategic Response Team">
+              <input id="evPic" placeholder="e.g. Nurse Dani">
             </div>
             <div class="ev-field">
               <label for="evCompliance">Compliance rule / note</label>
@@ -185,23 +185,59 @@
 
     <!-- MEMBERS -->
     <div id="tab-members" class="tabpanel" style="display:none;">
-      <div class="card">
-        <h3>Add Member</h3>
-        <input id="mFullName" placeholder="Full Name (e.g. Alvarez Maria C)">
-        <input id="mStudentNo" placeholder="Student No. (e.g. 202330922)">
-        <input id="mCommittee" placeholder="Committee (e.g. Strategic Response)">
-        <input id="mUsername" placeholder="Username (they'll log in with this)">
-        <input id="mPassword" placeholder="Temporary Password" type="text">
-        <select id="mRole">
-          <option value="member">Member</option>
-          <option value="stratres">Strategic Response Member</option>
-          <option value="admin">Admin</option>
-        </select>
+      <div class="card ev-form mem-form">
+        <div class="ev-form__head">
+          <h3>Add Member</h3>
+          <p>Creates a login account. Share the username and temporary password with the member.</p>
+        </div>
+
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">1</span> Member info</h4>
+          <div class="ev-grid">
+            <div class="ev-field ev-span-2">
+              <label for="mFullName">Full name</label>
+              <input id="mFullName" placeholder="e.g. Dela Cruz, Juan">
+            </div>
+            <div class="ev-field">
+              <label for="mStudentNo">Student no.</label>
+              <input id="mStudentNo" placeholder="e.g. 202331234">
+            </div>
+            <div class="ev-field">
+              <label for="mCommittee">Committee</label>
+              <input id="mCommittee" placeholder="e.g. Strategic Response">
+            </div>
+          </div>
+        </section>
+
+        <section class="ev-sec">
+          <h4 class="ev-sec__title"><span class="ev-sec__num">2</span> Login &amp; role</h4>
+          <div class="ev-grid">
+            <div class="ev-field">
+              <label for="mUsername">Username</label>
+              <input id="mUsername" placeholder="They'll log in with this">
+            </div>
+            <div class="ev-field">
+              <label for="mPassword">Temporary password</label>
+              <input id="mPassword" placeholder="They can use this to sign in" type="text">
+            </div>
+            <div class="ev-field ev-span-2">
+              <label for="mRole">Role</label>
+              <select id="mRole">
+                <option value="member">Member</option>
+                <option value="stratres">Strategic Response Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
         <div class="error" id="mError"></div>
-        <button class="primary" id="addMemberBtn">+ Create Account</button>
+        <div class="ev-actions">
+          <button class="primary" id="addMemberBtn">+ Create Account</button>
+        </div>
       </div>
-      <div class="card">
-        <input id="memberSearch" placeholder="Search by name or student no...">
+      <div class="card mem-search">
+        <input id="memberSearch" placeholder="🔍  Search by name or student no...">
       </div>
       <div class="tabs" id="memberCommitteeTabs"></div>
       <div id="membersList"></div>
