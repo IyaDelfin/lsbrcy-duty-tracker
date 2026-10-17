@@ -250,3 +250,28 @@ tr:last-child td { border-bottom: none; }
 }
 .ev-form input[type="date"]::-webkit-date-and-time-value,
 .ev-form input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+
+/* ===== Members tab touch-ups (added) ===== */
+.mem-form .error { margin: 0 0 10px; }
+.mem-form .error:empty { display: none; }
+.mem-search { padding: 12px; }
+.mem-search input { margin: 0; }
+
+#memberCommitteeTabs { padding-bottom: 14px; }
+
+/* Roster: fit the columns on screen instead of scrolling sideways */
+#membersList table { display: table; width: 100%; table-layout: auto; white-space: normal; }
+#membersList th, #membersList td { white-space: normal; word-break: break-word; vertical-align: middle; padding: 10px 8px; }
+#membersList td:first-child { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+#membersList td:nth-child(2) { font-weight: 600; }
+#membersList tr[data-view-id] { transition: background .12s; }
+#membersList tr[data-view-id]:hover { background: rgba(255,255,255,.04); }
+#membersList tr[data-view-id]:active { background: rgba(217,51,46,.08); }
+#membersList td:last-child, #membersList th:last-child { text-align: right; width: 1%; white-space: nowrap; }
+#membersList button.danger { border-color: transparent; color: var(--muted); background: transparent; }
+#membersList button.danger:hover { border-color: var(--red); color: var(--red); }
+#membersList .badge { text-transform: capitalize; }
+
+@media (max-width: 560px) {
+  #membersList th:first-child, #membersList td:first-child { display: none; }
+}
