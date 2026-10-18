@@ -259,19 +259,16 @@ tr:last-child td { border-bottom: none; }
 
 #memberCommitteeTabs { padding-bottom: 14px; }
 
-/* Roster: fit the columns on screen instead of scrolling sideways */
-#membersList table { display: table; width: 100%; table-layout: auto; white-space: normal; }
-#membersList th, #membersList td { white-space: normal; word-break: break-word; vertical-align: middle; padding: 10px 8px; }
-#membersList td:first-child { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Roster: one line per row, scroll sideways when it doesn't fit */
+#membersList table { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+#membersList table tbody { display: table; min-width: 100%; }
+#membersList th, #membersList td { white-space: nowrap; vertical-align: middle; padding: 10px 14px; }
+#membersList td:first-child { color: var(--muted); font-variant-numeric: tabular-nums; }
 #membersList td:nth-child(2) { font-weight: 600; }
 #membersList tr[data-view-id] { transition: background .12s; }
 #membersList tr[data-view-id]:hover { background: rgba(255,255,255,.04); }
 #membersList tr[data-view-id]:active { background: rgba(217,51,46,.08); }
-#membersList td:last-child, #membersList th:last-child { text-align: right; width: 1%; white-space: nowrap; }
-#membersList button.danger { border-color: transparent; color: var(--muted); background: transparent; }
-#membersList button.danger:hover { border-color: var(--red); color: var(--red); }
+#membersList td:last-child, #membersList th:last-child { text-align: right; }
+#membersList button.danger { border: 1px solid var(--red); color: var(--red); background: transparent; }
+#membersList button.danger:hover { background: rgba(217,51,46,.12); }
 #membersList .badge { text-transform: capitalize; }
-
-@media (max-width: 560px) {
-  #membersList th:first-child, #membersList td:first-child { display: none; }
-}
