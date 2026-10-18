@@ -735,17 +735,19 @@ function renderMembers() {
   el.innerHTML = `
     <div class="card">
       <h3>Registered Roster (${filtered.length})</h3>
-      <table>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table style="min-width:560px;">
         <tr><th>Student No.</th><th>Name</th><th>Committee</th><th>Role</th><th></th></tr>
         ${filtered.map(m => `
           <tr data-view-id="${m.id}" style="cursor:pointer;">
             <td>${escapeHtml(m.studentNo || "")}</td>
             <td>${escapeHtml(m.fullName || m.username || "")}</td>
             <td>${escapeHtml(m.committee || "")}</td>
-            <td><span class="badge ${m.role === 'admin' ? 'red' : m.role === 'stratres' ? 'orange' : 'blue'}">${m.role}</span></td>
+            <td><span class="badge ${m.role === 'admin' ? 'red' : m.role === 'stratres' ? 'orange' : 'blue'}" style="white-space:nowrap;">${m.role}</span></td>
             <td><button class="danger" data-action="delete-member" data-id="${m.id}" style="padding:6px 10px;font-size:.75rem;">Remove</button></td>
           </tr>`).join("")}
       </table>
+      </div>
       ${filtered.length === 0 ? `<p class="muted">No members match this filter.</p>` : ""}
     </div>`;
 
@@ -791,7 +793,8 @@ function renderMemberDetail() {
       <p class="muted">Early Out Count: <strong style="color:var(--blue);">${records.filter(r => r.earlyOut).length}</strong></p>
       <p class="muted">No Show Count: <strong style="color:var(--red);">${records.filter(r => r.noShow).length}</strong></p>
       <p class="muted" style="font-size:.75rem;">Tap a row to see full details. Use Edit to change the time or note.</p>
-      <table>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table style="min-width:640px;">
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th></th></tr>
         ${records.map(r => {
           const isExpanded = expandedRecordId === r.id;
@@ -838,6 +841,7 @@ function renderMemberDetail() {
           </tr>` : ''}`;
         }).join("")}
       </table>
+      </div>
       ${records.length === 0 ? `<p class="muted">No duty records yet.</p>` : ""}
       <hr class="section-divider">
       <h3 style="margin:16px 0 8px;">+ Add Duty Record</h3>
