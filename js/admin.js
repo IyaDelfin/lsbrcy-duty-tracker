@@ -993,22 +993,10 @@ function getFilteredRecords() {
 function renderRecords() {
   const el = document.getElementById("recordsList");
   const filtered = getFilteredRecords();
-  const base = baseFilteredRecords();
 
   const committees = [...new Set(allRecords.map(r => r.committee).filter(Boolean))];
   const committeeTabsHtml = ["all", ...committees].map(c =>
     `<button data-committee="${escapeHtml(c)}" class="${activeCommitteeFilter === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
-  ).join("");
-
-  const statusDefs = [
-    ["all", "All", base.length],
-    ["late", "Late", base.filter(r => r.late).length],
-    ["earlyOut", "Early Out", base.filter(r => r.earlyOut).length],
-    ["noShow", "No Show", base.filter(r => r.noShow).length],
-    ["active", "On Duty", base.filter(r => r.timeIn && !r.timeOut && !r.noShow).length]
-  ];
-  const statusTabsHtml = statusDefs.map(([key, label, n]) =>
-    `<button data-status-filter="${key}" class="${activeStatusFilter === key ? 'active' : ''}">${label} (${n})</button>`
   ).join("");
 
   const totalHours = filtered.reduce((s, r) => s + (r.hours || 0), 0);
@@ -1018,7 +1006,7 @@ function renderRecords() {
     const day = r.date || (r.timeIn ? localDateStr(new Date(r.timeIn)) : "");
     const dayLabel = day ? new Date(day + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "–";
     const shiftText = r.shiftStart ? `${formatTime12(r.shiftStart)} – ${formatTime12(r.shiftEnd)}` : (r.shift || "–");
-    const inOut = r.noShow ? "Did not clock in" : `In ${fmtClock(r.timeIn)} · Out ${r.timeOut ? fmtClock(r.timeOut) : "–"}`;
+    const inOut = r.noShow ? "Did not clock in" : `${fmtClock(r.timeIn)} → ${r.timeOut ? fmtClock(r.timeOut) : "–"}`;
     const statusBadge = r.noShow ? `<span class="badge red">No Show</span>`
       : (r.timeIn && !r.timeOut) ? `<span class="badge blue">On Duty</span>`
       : `<span class="badge green">Completed</span>`;
@@ -1035,10 +1023,9 @@ function renderRecords() {
 
   el.innerHTML = `
     <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
-    <div class="tabs" id="statusSubTabs">${statusTabsHtml}</div>
     <div class="card">
       <p class="muted" style="margin:0 0 10px;"><strong style="color:var(--text);">${filtered.length}</strong> record${filtered.length === 1 ? "" : "s"} · <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong> total hours</p>
-      <div style="overflow-x:auto;">
+      <div style="overflow-x:auto;font-size:.88rem;">
         <table>
           <tr><th>Member</th><th>Event</th><th>Shift</th><th>Hrs</th><th>Status</th><th></th></tr>
           ${filtered.map(rowHtml).join("")}
@@ -1049,10 +1036,6 @@ function renderRecords() {
 
   document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeCommitteeFilter = btn.dataset.committee;
-    renderRecords();
-  }));
-  document.getElementById("statusSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
-    activeStatusFilter = btn.dataset.statusFilter;
     renderRecords();
   }));
 
@@ -1624,5 +1607,3 @@ async function exportEventAttendanceToExcel(ev) {
   const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
   await downloadWorkbook(workbook, `${safeName}-attendance-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
-
-
