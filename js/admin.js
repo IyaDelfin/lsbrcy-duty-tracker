@@ -736,7 +736,7 @@ function renderMembers() {
     <div class="card">
       <h3>Registered Roster (${filtered.length})</h3>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <table style="min-width:560px;">
+      <table style="min-width:560px;white-space:nowrap;">
         <tr><th>Student No.</th><th>Name</th><th>Committee</th><th>Role</th><th></th></tr>
         ${filtered.map(m => `
           <tr data-view-id="${m.id}" style="cursor:pointer;">
@@ -794,7 +794,7 @@ function renderMemberDetail() {
       <p class="muted">No Show Count: <strong style="color:var(--red);">${records.filter(r => r.noShow).length}</strong></p>
       <p class="muted" style="font-size:.75rem;">Tap a row to see full details. Use Edit to change the time or note.</p>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <table style="min-width:640px;">
+      <table style="min-width:640px;white-space:nowrap;">
         <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th><th></th></tr>
         ${records.map(r => {
           const isExpanded = expandedRecordId === r.id;
@@ -812,7 +812,7 @@ function renderMemberDetail() {
           </tr>
           ${isExpanded ? `
           <tr>
-            <td colspan="8" style="background:rgba(255,255,255,.03);padding:0;">
+            <td colspan="8" style="background:rgba(255,255,255,.03);padding:0;white-space:normal;">
               ${isEditing ? `
                 <div style="padding:12px;">
                   <div class="row">
