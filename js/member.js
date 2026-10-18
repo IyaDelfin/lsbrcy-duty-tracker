@@ -64,6 +64,7 @@ function initData() {
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => b.createdAt - a.createdAt);
       openRecord = myRecords.find(r => r.timeIn != null && r.timeOut == null && !r.noShow) || null;
+      myRecordsLoaded = true;
       updateTotalHours();
       renderClockCard();
       renderEventSubTabs();
@@ -84,7 +85,7 @@ function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
   const active = allEvents.filter(e => e.status === "active" && !e.manualOnly && (e.category || "clinic") === activeCategory);
 
-    listEl.innerHTML = active.map(ev => `
+  listEl.innerHTML = active.map(ev => `
     <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
       <div class="row" style="align-items:center;">
         <div>
@@ -97,10 +98,6 @@ function renderCategoryEvents() {
       </div>
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
 
-
-
-
-  
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     selectedEventId = card.dataset.eventId;
     expandedDate = null;
@@ -244,12 +241,31 @@ function memberReservationCountForEvent(ev) {
   myRecords.filter(r => r.eventId === ev.id).forEach(r => { if (r.date) dateSet.add(r.date); });
   return dateSet.size;
 }
+
+// ---------- NO-SHOW SWEEP ----------
 // Auto-cancels a reservation the member never clocked in for, more than
 // NO_SHOW_MINUTES after their selected start time — freeing the slot for
 // others — and leaves behind a "No Show" duty record so it still counts
 // toward their per-member reservation limit on this event.
+
+// Shows a visible error (under the Clock In button) instead of failing silently.
+function reportNoShowError(step, err) {
+  console.error("No-show sweep failed while " + step + ":", err);
+  const el = document.getElementById("clockError");
+  if (el) el.textContent = "No-show check failed (" + step + "): " + (err.code || err.message);
+}
+
+let myRecordsLoaded = false;    // true once the duty-records listener has delivered data
+let noShowSweepRunning = false; // stops two sweeps overlapping (would double-create records)
+
 async function checkNoShowReservations() {
-  if (!currentUser || !myProfile) return;
+  if (!currentUser || !myProfile || !myRecordsLoaded || noShowSweepRunning) return;
+  noShowSweepRunning = true;
+  try { await runNoShowSweep(); }
+  finally { noShowSweepRunning = false; }
+}
+
+async function runNoShowSweep() {
   const now = Date.now();
 
   for (const ev of allEvents) {
@@ -259,8 +275,15 @@ async function checkNoShowReservations() {
       const entry = list.find(v => v.uid === currentUser.uid);
       if (!entry || !entry.startTime) continue;
 
-      const alreadyHasRecord = myRecords.some(r => r.eventId === ev.id && r.date === date);
-      if (alreadyHasRecord) continue;
+      const existing = myRecords.find(r => r.eventId === ev.id && r.date === date);
+      if (existing && !existing.noShow) continue; // they showed up (clocked in) — nothing to do
+      if (existing && existing.noShow) {
+        // A no-show record was already saved but the reservation never got
+        // removed (the cancel step failed earlier) — finish the job.
+        try { await cancelReservation(ev, date, entry); }
+        catch (err) { reportNoShowError("removing the reservation", err); }
+        continue;
+      }
 
       const scheduledStart = combineDateTime(date, entry.startTime);
       const noShowThreshold = scheduledStart.getTime() + NO_SHOW_MINUTES * 60000;
@@ -290,13 +313,18 @@ async function checkNoShowReservations() {
         });
         await cancelReservation(ev, date, entry);
       } catch (err) {
-        console.error("No-show sweep failed:", err);
+        reportNoShowError("auto-cancelling a no-show", err);
       }
     }
   }
 }
 
 setInterval(checkNoShowReservations, 60000);
+// Phones pause timers while the screen is off / the tab is hidden, so also
+// check the moment the page comes back to the foreground.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) checkNoShowReservations();
+});
 
 // Builds a JS Date for a "YYYY-MM-DD" date + "HH:MM" 24-hour time.
 function combineDateTime(dateStr, hhmm) {
@@ -408,9 +436,6 @@ function minutesBetween(startHHMM, endHHMM) {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
-// Builds 1-hour blocks across all of an event's duty time windows
-// (e.g. 7:00–8:00, 8:00–9:00, ..., then 1:00–2:00, 2:00–3:00, ... for a
-// split shift) for the hour-by-hour slots table.
 // Builds 30-minute blocks across all of an event's duty time windows —
 // matching the same granularity members pick start/end times in, so a
 // reservation like 10:30–11:30 only ever occupies the half-hour blocks
@@ -427,11 +452,6 @@ function hourSlotsForEvent(ev, date) {
 }
 
 
-
-// Renders the per-date volunteer list as an hour-by-hour slots table
-// (time block header row, then one row per volunteer whose reserved
-// range overlaps that hour). Falls back to a flat name list for events
-// with no duty-time range set.
 // Renders the per-date volunteer list as a stack of blue slot cards (one
 // per 30-minute block within the event's duty time windows), each a
 // header row of the time + occupancy, followed by the volunteers whose
@@ -482,7 +502,7 @@ function renderHourSlotTable(ev, list, date) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
+              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
@@ -497,7 +517,6 @@ function renderHourSlotTable(ev, list, date) {
       }).join("")}
     </div>`;
 }
-
 
 
 // True if every hour this [startTime, endTime) range touches still has
@@ -517,7 +536,6 @@ function hourCapacityOk(ev, list, startTime, endTime, date, loc) {
 // True if the member already has a timed reservation on `date` (on any
 // other event) whose [start, end) overlaps the newly requested range.
 function hasOverlappingReservation(date, startTime, endTime, excludeEventId) {
-
   if (!startTime || !endTime) return false;
   const newStart = combineDateTime(date, startTime).getTime();
   const newEnd = combineDateTime(date, endTime).getTime();
@@ -573,8 +591,6 @@ async function cancelReservation(ev, date, entry) {
 }
 
 
-
-
 // ---------- EVENT DETAILS (per-date reserve cards) ----------
 function renderEventDetails() {
   const el = document.getElementById("eventDetails");
@@ -582,7 +598,7 @@ function renderEventDetails() {
   if (!ev) { el.innerHTML = ""; return; }
 
   const volunteersByDate = ev.volunteersByDate || {};
-const dates = eventDates(ev);
+  const dates = eventDates(ev);
   const myReservationCount = memberReservationCountForEvent(ev);
   const atMemberLimit = ev.maxPerMember != null && myReservationCount >= ev.maxPerMember;
   const today = todayStr();
@@ -593,15 +609,13 @@ const dates = eventDates(ev);
     const hasTimeRange = timeOptions.length > 1;
     const full = ev.maxVolunteers != null && !hasTimeRange && list.length >= ev.maxVolunteers;
 
-    
-
     const myEntry = list.find(v => v.uid === currentUser.uid);
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
     const isPastDate = date < today; // "YYYY-MM-DD" strings compare correctly lexically
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
-     // Today's start options drop any time that's already passed.
+    // Today's start options drop any time that's already passed.
     const defaultLoc = locationsForDate(ev, date).length > 1 ? locationsForDate(ev, date)[0] : null;
     const startOptionsForDate = startTimeOptionsForEvent(ev, date, defaultLoc).filter(t =>
       date !== today || combineDateTime(date, t).getTime() > Date.now()
@@ -609,11 +623,8 @@ const dates = eventDates(ev);
     const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
     const defaultStart = startOptionsForDate[0];
     const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date, defaultLoc) : [];
-    
+
     const namesHtml = renderHourSlotTable(ev, list, date);
-
-
-
 
     let actionHtml;
     if (alreadyReserved) {
@@ -636,8 +647,6 @@ const dates = eventDates(ev);
     }
 
     const timePickerHtml = (!alreadyReserved && !full && !atMemberLimit && !isPastDate && !pastCutoffToday && hasTimeRange) ? `
-
-        
         ${locationsForDate(ev, date).length > 1 ? `
         <div class="row" style="margin-top:8px;">
           <select data-location-pick="${date}">
@@ -653,16 +662,16 @@ const dates = eventDates(ev);
           </select>
         </div>` : "";
 
-const isExpanded = expandedDate === date;
+    const isExpanded = expandedDate === date;
 
     return `
       <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
         <div class="row" style="align-items:center;">
-              <div data-toggle-date="${date}" style="cursor:pointer;">
+          <div data-toggle-date="${date}" style="cursor:pointer;">
             <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
             ${(ev.dateOverrides && ev.dateOverrides[date] && ev.dateOverrides[date].length) ? `<span class="badge orange" style="margin-left:4px;font-size:.65rem;">Custom schedule</span>` : ''}
             ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
-            
+
             <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
           </div>
           ${actionHtml}
@@ -741,10 +750,10 @@ const isExpanded = expandedDate === date;
         alert(`This event's max shift length is ${ev.maxHours} hour${ev.maxHours === 1 ? "" : "s"}.`);
         return;
       }
-            if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
+      if (hasOverlappingReservation(date, startTime, endTime, ev.id)) {
         alert("You already have a reservation that overlaps with this time on this date.");
         return;
-      }     
+      }
       const dateList = (ev.volunteersByDate || {})[date] || [];
       if (!hourCapacityOk(ev, dateList, startTime, endTime, date, loc)) {
         alert(`One or more hours in this range are already full (max ${ev.maxVolunteers} per hour).`);
@@ -763,9 +772,6 @@ const isExpanded = expandedDate === date;
     if (entry) cancelReservation(ev, date, entry);
   }));
 }
-
-
-
 
 
 // ---------- CLOCK IN / OUT ----------
@@ -813,7 +819,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
   btn.disabled = true;
   try {
 
-        if (openRecord) {
+    if (openRecord) {
       // Snapshot everything we need from openRecord *before* the write below —
       // the onSnapshot listener can flip the module-level `openRecord` to null
       // the instant the record's timeOut is saved, so referencing openRecord
@@ -832,7 +838,7 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       if (shiftEnd) {
         const scheduledEnd = combineDateTime(recordDate, shiftEnd);
         const earlyOutThreshold = scheduledEnd.getTime() - EARLY_CLOCKOUT_GRACE_MINUTES * 60000;
-     if (timeOut < earlyOutThreshold) {
+        if (timeOut < earlyOutThreshold) {
           earlyOut = true;
 
           const remainingMins = Math.ceil((scheduledEnd.getTime() - timeOut) / 60000);
