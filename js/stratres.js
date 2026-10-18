@@ -67,7 +67,7 @@ function renderRecords() {
     `<button data-committee="${escapeHtml(c)}" class="${activeCommitteeFilter === c ? 'active' : ''}">${c === "all" ? "All Committees" : escapeHtml(c)}</button>`
   ).join("");
 
-   if (activeCommitteeFilter !== "all") {
+  if (activeCommitteeFilter !== "all") {
     filtered = filtered.filter(r => r.committee === activeCommitteeFilter);
   }
   if (memberSearchTerm) {
@@ -77,31 +77,41 @@ function renderRecords() {
     );
   }
 
+  const totalHours = filtered.reduce((s, r) => s + (r.hours || 0), 0);
+  const sub = (txt) => `<div class="muted" style="font-size:.75rem;margin-top:2px;">${txt}</div>`;
+
+  const rowHtml = (r) => {
+    const day = recordDate(r);
+    const dayLabel = day ? new Date(day + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "–";
+    const shiftText = r.shiftStart ? `${formatTime12(r.shiftStart)} – ${formatTime12(r.shiftEnd)}` : (r.shift || "–");
+    const inOut = r.noShow ? "Did not clock in" : `${fmtClock(r.timeIn)} → ${r.timeOut ? fmtClock(r.timeOut) : "–"}`;
+    const statusBadge = r.noShow ? `<span class="badge red">No Show</span>`
+      : (r.timeIn && !r.timeOut) ? `<span class="badge blue">On Duty</span>`
+      : `<span class="badge green">Completed</span>`;
+    return `
+          <tr data-view-uid="${r.uid || ''}" style="cursor:pointer;${r.uid && r.uid === selectedMemberUid ? 'background:rgba(255,255,255,.04);' : ''}">
+            <td><strong>${escapeHtml(r.fullName || "")}</strong>${sub(`${escapeHtml(r.studentNo || "")}${r.committee ? ` · ${escapeHtml(r.committee)}` : ""}`)}</td>
+            <td>${escapeHtml(r.eventName || "")}${sub(dayLabel)}</td>
+            <td>${escapeHtml(shiftText)}${sub(inOut)}</td>
+            <td><strong>${r.hours != null ? r.hours.toFixed(1) : "–"}</strong></td>
+            <td>${statusBadge}${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.addedByAdmin ? ` <span class="badge blue">Manual</span>` : ""}</td>
+          </tr>`;
+  };
+
   el.innerHTML = `
     <div class="tabs" id="committeeSubTabs">${committeeTabsHtml}</div>
     <div class="card">
-      <table>
-        <tr><th>Student</th><th>Name</th><th>Committee</th><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
-                ${filtered.map(r => `
-          <tr data-view-uid="${r.uid || ''}" style="cursor:pointer;">
-
-            <td>${escapeHtml(r.studentNo || "")}</td>
-            <td>${escapeHtml(r.fullName || "")}</td>
-            <td>${escapeHtml(r.committee || "")}</td>
-            <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
-            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
-            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-          </tr>`).join("")}
-      </table>
+      <p class="muted" style="margin:0 0 10px;"><strong style="color:var(--text);">${filtered.length}</strong> record${filtered.length === 1 ? "" : "s"} · <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong> total hours <span style="font-size:.78rem;">· tap a row to see that member's full history</span></p>
+      <div style="overflow-x:auto;font-size:.88rem;">
+        <table>
+          <tr><th>Member</th><th>Event</th><th>Shift</th><th>Hrs</th><th>Status</th></tr>
+          ${filtered.map(rowHtml).join("")}
+        </table>
+      </div>
       ${filtered.length === 0 ? `<p class="muted">No duty records for this filter yet.</p>` : ""}
     </div>`;
 
-  
-    document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+  document.getElementById("committeeSubTabs").querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeCommitteeFilter = btn.dataset.committee;
     renderRecords();
   }));
@@ -109,7 +119,9 @@ function renderRecords() {
   el.querySelectorAll('tr[data-view-uid]').forEach(row => row.addEventListener("click", () => {
     if (!row.dataset.viewUid) return;
     selectedMemberUid = row.dataset.viewUid;
-    renderMemberDetail();
+    renderRecords();
+    const detail = document.getElementById("memberDetail");
+    if (detail) detail.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
 
   renderMemberDetail();
@@ -124,38 +136,56 @@ function renderMemberDetail() {
 
   const first = records[0];
   const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
+  const chip = (label, value, color) => `
+      <div style="flex:1;min-width:90px;text-align:center;padding:8px 6px;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:1.2rem;font-weight:700;${color ? `color:var(--${color});` : ""}">${value}</div>
+        <div class="muted" style="font-size:.7rem;">${label}</div>
+      </div>`;
+  const sub = (txt) => `<div class="muted" style="font-size:.75rem;margin-top:2px;">${txt}</div>`;
 
-    el.innerHTML = `
+  const rowHtml = (r) => {
+    const day = recordDate(r);
+    const dayLabel = day ? new Date(day + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "–";
+    const shiftText = r.shiftStart ? `${formatTime12(r.shiftStart)} – ${formatTime12(r.shiftEnd)}` : (r.shift || "–");
+    const inOut = r.noShow ? "Did not clock in" : `${fmtClock(r.timeIn)} → ${r.timeOut ? fmtClock(r.timeOut) : "–"}`;
+    const statusBadge = r.noShow ? `<span class="badge red">No Show</span>`
+      : (r.timeIn && !r.timeOut) ? `<span class="badge blue">On Duty</span>`
+      : `<span class="badge green">Completed</span>`;
+    return `
+          <tr>
+            <td>${escapeHtml(r.eventName || "")}${sub(dayLabel)}</td>
+            <td>${escapeHtml(shiftText)}${sub(inOut)}</td>
+            <td><strong>${r.hours != null ? r.hours.toFixed(1) : "–"}</strong></td>
+            <td>${statusBadge}${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.addedByAdmin ? ` <span class="badge blue">Manual</span>` : ""}</td>
+          </tr>`;
+  };
+
+  el.innerHTML = `
     <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:5px; position: relative;">
       <button class="secondary" id="closeMemberDetail" style="position: absolute; top: 16px; right: 16px; width: auto;">Close</button>
       <p class="eyebrow">Member Details</p>
-            <h3 style="margin:0;">${escapeHtml(first.fullName || "")}</h3>
+      <h3 style="margin:0 0 4px;">${escapeHtml(first.fullName || "")}</h3>
+      <p class="muted" style="margin:0;">${escapeHtml(first.studentNo || "–")} · ${escapeHtml(first.committee || "–")}</p>
     </div>
-      <p class="muted">ID: ${escapeHtml(first.studentNo || "–")} · Committee: ${escapeHtml(first.committee || "–")}</p>
-      <p class="muted">Total Hours Rendered: <strong style="color:var(--text);">${totalHours.toFixed(1)}</strong></p>
-      <p class="muted">Late Count: <strong style="color:var(--orange);">${records.filter(r => r.late).length}</strong></p>
-      <p class="muted">Early Out Count: <strong style="color:var(--blue);">${records.filter(r => r.earlyOut).length}</strong></p>
-      <p class="muted">No Show Count: <strong style="color:var(--red);">${records.filter(r => r.noShow).length}</strong></p>
-      <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
-        ${records.map(r => `
-          <tr>
-            <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
-            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
-            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-          </tr>`).join("")}
-      </table>
+    <div class="card">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+        ${chip("Total hours", totalHours.toFixed(1))}
+        ${chip("Late", records.filter(r => r.late).length, "orange")}
+        ${chip("Early out", records.filter(r => r.earlyOut).length, "blue")}
+        ${chip("No show", records.filter(r => r.noShow).length, "red")}
+      </div>
+      <div style="overflow-x:auto;font-size:.88rem;">
+        <table>
+          <tr><th>Event</th><th>Shift</th><th>Hrs</th><th>Status</th></tr>
+          ${records.map(rowHtml).join("")}
+        </table>
+      </div>
     </div>`;
 
-  
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberUid = null;
-    renderMemberDetail();
+    renderRecords();
   });
 }
 
