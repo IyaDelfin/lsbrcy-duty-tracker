@@ -1624,3 +1624,5 @@ async function exportEventAttendanceToExcel(ev) {
   const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
   await downloadWorkbook(workbook, `${safeName}-attendance-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+
