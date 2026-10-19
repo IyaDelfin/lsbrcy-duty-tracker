@@ -616,11 +616,18 @@ function renderEventDetails() {
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
     // Today's start options drop any time that's already passed.
-    const defaultLoc = locationsForDate(ev, date).length > 1 ? locationsForDate(ev, date)[0] : null;
-    const startOptionsForDate = startTimeOptionsForEvent(ev, date, defaultLoc).filter(t =>
+    // Start times still bookable (today: not yet passed), optionally for one location.
+    const futureStarts = (loc) => startTimeOptionsForEvent(ev, date, loc).filter(t =>
       date !== today || combineDateTime(date, t).getTime() > Date.now()
     );
-    const pastCutoffToday = hasTimeRange && date === today && startOptionsForDate.length === 0;
+    const dateLocs = locationsForDate(ev, date);
+    // Only locations that still have a bookable time (e.g. by 12 NN the morning
+    // Grandstand blocks are over, so default to the next location instead).
+    const availableLocs = dateLocs.filter(l => futureStarts(l).length > 0);
+    const defaultLoc = dateLocs.length > 1 ? (availableLocs[0] || dateLocs[0]) : null;
+    const startOptionsForDate = futureStarts(defaultLoc);
+    // "Time Passed" only when NO location has any time left today.
+    const pastCutoffToday = hasTimeRange && date === today && futureStarts(null).length === 0;
     const defaultStart = startOptionsForDate[0];
     const endOptionsForDefaultStart = defaultStart ? endTimeOptions(ev, defaultStart, date, defaultLoc) : [];
 
@@ -650,7 +657,7 @@ function renderEventDetails() {
         ${locationsForDate(ev, date).length > 1 ? `
         <div class="row" style="margin-top:8px;">
           <select data-location-pick="${date}">
-            ${locationsForDate(ev, date).map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join("")}
+            ${(availableLocs.length ? availableLocs : dateLocs).map(l => `<option value="${escapeHtml(l)}"${l === defaultLoc ? ' selected' : ''}>${escapeHtml(l)}</option>`).join("")}
           </select>
         </div>` : ""}
         <div class="row" style="margin-top:8px;">
@@ -741,6 +748,10 @@ function renderEventDetails() {
       return;
     }
     if (startSel && endSel) {
+      if (!startTime || !endTime) {
+        alert("No available time left for this location. Please pick another location or date.");
+        return;
+      }
       const duration = minutesBetween(startTime, endTime);
       if (duration < 60) {
         alert("Please select a shift of at least 1 hour (60 minutes).");
