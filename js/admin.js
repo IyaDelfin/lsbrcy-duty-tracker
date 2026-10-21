@@ -128,8 +128,7 @@ function renderCategoryEvents() {
     listEl.innerHTML = active.map(ev => `
     <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-      <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-      ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
+      <div class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDatesWithLocation(ev)}</div>
       <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${volunteerCount(ev)} volunteer${volunteerCount(ev) === 1 ? "" : "s"}</p>
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
@@ -572,6 +571,47 @@ function formatTimeWindows(ev) {
   return windows.map(w => `${formatTime12(w.start)} – ${formatTime12(w.end)}`).join(", ");
 }
 
+// Location(s) used on one date: each override block's location for that day
+// (a blank block falls back to the event's basic location), otherwise the
+// basic location from the event's Basics.
+function locationsForDate(ev, date) {
+  const base = (ev.location || "").trim();
+  const blocks = ev.dateOverrides && ev.dateOverrides[date];
+  if (blocks && blocks.length) {
+    const locs = [];
+    blocks.forEach(b => {
+      const l = ((b.location || "").trim()) || base;
+      if (l && !locs.includes(l)) locs.push(l);
+    });
+    return locs;
+  }
+  return base ? [base] : [];
+}
+
+// HTML lines of "Mon, Oct 19 – Wed, Oct 21  📍 Location". Consecutive dates that
+// share the same location are merged into one range; a different location on
+// an overridden date gets its own line.
+function formatEventDatesWithLocation(ev) {
+  const fmt = d => new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  const nextDay = d => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + 1); return localDateStr(x); };
+  const pill = loc => loc ? `<span style="display:inline-block;background:rgba(217,51,46,.15);color:var(--red);padding:1px 8px;border-radius:6px;font-size:.78rem;font-weight:700;margin-left:6px;">📍 ${escapeHtml(loc)}</span>` : "";
+
+  const dates = eventDates(ev);
+  if (!dates.length) return pill((ev.location || "").trim());
+
+  const groups = [];
+  dates.forEach(d => {
+    const key = locationsForDate(ev, d).join(" / ");
+    const last = groups[groups.length - 1];
+    if (last && last.key === key && nextDay(last.end) === d) last.end = d;
+    else groups.push({ start: d, end: d, key });
+  });
+  return groups.map(g => {
+    const label = g.start === g.end ? fmt(g.start) : `${fmt(g.start)} – ${fmt(g.end)}`;
+    return `<div style="margin-bottom:4px;">${escapeHtml(label)}${pill(g.key)}</div>`;
+  }).join("");
+}
+
 function renderEvents() {
   const el = document.getElementById("eventsList");
   let visible = allEvents;
@@ -579,8 +619,8 @@ function renderEvents() {
   if (evCategoryFilter !== "all") visible = visible.filter(ev => (ev.category || "clinic") === evCategoryFilter);
 
   // Small label-over-value cell used in the event card's details grid.
-  const meta = (label, value) => (value === "" || value == null) ? "" : `
-        <div style="min-width:0;">
+  const meta = (label, value, wide) => (value === "" || value == null) ? "" : `
+        <div style="min-width:0;${wide ? "grid-column:1/-1;" : ""}">
           <div style="font-size:.66rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">${label}</div>
           <div style="font-size:.9rem;font-weight:600;color:var(--text);overflow-wrap:anywhere;">${value}</div>
         </div>`;
@@ -588,7 +628,7 @@ function renderEvents() {
 
   el.innerHTML = visible.map(ev => {
     const isOpen = attendanceOpenFor === ev.id;
-    const dateText = formatEventDateRange(ev);
+    const datesHtml = formatEventDatesWithLocation(ev);
     const windowsText = formatTimeWindows(ev);
     return `
     <div class="card" style="padding:18px 20px;${isOpen ? "border-color:var(--red);" : ""}">
@@ -609,7 +649,7 @@ function renderEvents() {
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 18px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-        ${meta("Dates", dateText ? escapeHtml(dateText) : "")}
+        ${meta("Dates", datesHtml, true)}
         ${meta("Duty hours", windowsText ? escapeHtml(windowsText) : "")}
         ${meta("PIC", ev.pic ? escapeHtml(ev.pic) : "")}
         ${meta("Max hours", ev.maxHours != null ? `${ev.maxHours} hr${ev.maxHours === 1 ? "" : "s"}` : "")}
