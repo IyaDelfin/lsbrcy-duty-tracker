@@ -128,7 +128,7 @@ function renderCategoryEvents() {
     listEl.innerHTML = active.map(ev => `
     <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-      <div class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDatesWithLocation(ev)}</div>
+      <div style="margin:2px 0 0;font-size:.78rem;color:var(--muted);">${formatEventDatesWithLocation(ev)}</div>
       <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${volunteerCount(ev)} volunteer${volunteerCount(ev) === 1 ? "" : "s"}</p>
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
