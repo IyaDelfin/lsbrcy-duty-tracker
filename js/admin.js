@@ -1035,6 +1035,23 @@ function getFilteredRecords() {
   }
 }
 
+// Where a duty record took place. New records save their location; for older ones we
+// look it up from the member's reservation, then from the event's time block that
+// contains their shift, then fall back to the event's main location.
+function recordLocation(r) {
+  if (r.location) return r.location;
+  const ev = allEvents.find(e => e.id === r.eventId);
+  if (!ev) return "";
+  const day = r.date || (r.timeIn ? localDateStr(new Date(r.timeIn)) : "");
+  const res = ((ev.volunteersByDate || {})[day] || []).find(v => v.uid === r.uid && v.location);
+  if (res) return res.location;
+  if (r.shiftStart) {
+    const win = timeWindowsForEvent(ev, day).find(w => w.start <= r.shiftStart && r.shiftStart < w.end);
+    if (win && win.location) return win.location;
+  }
+  return ev.location || "";
+}
+
 function renderRecords() {
   const el = document.getElementById("recordsList");
   const filtered = getFilteredRecords();
@@ -1058,7 +1075,7 @@ function renderRecords() {
     return `
           <tr>
             <td><strong>${escapeHtml(r.fullName || "")}</strong>${sub(`${escapeHtml(r.studentNo || "")}${r.committee ? ` · ${escapeHtml(r.committee)}` : ""}`)}</td>
-            <td>${escapeHtml(r.eventName || "")}${sub(dayLabel)}</td>
+            <td>${escapeHtml(r.eventName || "")}${sub(`${dayLabel}${recordLocation(r) ? ` · 📍 ${escapeHtml(recordLocation(r))}` : ""}`)}</td>
             <td>${escapeHtml(shiftText)}${sub(inOut)}</td>
             <td><strong>${r.hours != null ? r.hours.toFixed(1) : "–"}</strong></td>
             <td>${statusBadge}${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.addedByAdmin ? ` <span class="badge blue">Manual</span>` : ""}</td>
