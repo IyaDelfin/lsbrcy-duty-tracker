@@ -1075,7 +1075,7 @@ function renderRecords() {
     return `
           <tr>
             <td><strong>${escapeHtml(r.fullName || "")}</strong>${sub(`${escapeHtml(r.studentNo || "")}${r.committee ? ` · ${escapeHtml(r.committee)}` : ""}`)}</td>
-            <td>${escapeHtml(r.eventName || "")}${sub(`${dayLabel}${recordLocation(r) ? ` · 📍 ${escapeHtml(recordLocation(r))}` : ""}`)}</td>
+            <td>${escapeHtml(r.eventName || "")}${sub(`${dayLabel}${recordLocation(r) ? ` · ${escapeHtml(recordLocation(r))}` : ""}`)}</td>
             <td>${escapeHtml(shiftText)}${sub(inOut)}</td>
             <td><strong>${r.hours != null ? r.hours.toFixed(1) : "–"}</strong></td>
             <td>${statusBadge}${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.addedByAdmin ? ` <span class="badge blue">Manual</span>` : ""}</td>
