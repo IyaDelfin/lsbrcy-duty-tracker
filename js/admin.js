@@ -82,6 +82,7 @@ document.getElementById("categoryTabs").addEventListener("click", (e) => {
 const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 function initDashboard() {
+  initAnnouncements();
     onSnapshot(collection(db, "events"), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEvents();
@@ -1651,3 +1652,82 @@ async function exportEventAttendanceToExcel(ev) {
   const safeName = (ev.name || "event").replace(/[^\w\-]+/g, "-").replace(/^-+|-+$/g, "");
   await downloadWorkbook(workbook, `${safeName}-attendance-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+
+// =====================================================================
+// ANNOUNCEMENTS (admin) — short notices shown at the top of the member
+// page and behind the ✉ button. Stored in the "announcements" collection.
+// =====================================================================
+let allAnnouncements = [];
+const ANN_MAX_CHARS = 280;
+
+function initAnnouncements() {
+  onSnapshot(collection(db, "announcements"), (snap) => {
+    allAnnouncements = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    renderAnnouncementsAdmin();
+  });
+}
+
+function annAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  return new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function renderAnnouncementsAdmin() {
+  const el = document.getElementById("announcementsList");
+  if (!el) return;
+  el.innerHTML = allAnnouncements.map(a => `
+    <div class="card" style="padding:14px 16px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div style="min-width:0;flex:1;">
+          <div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:.95rem;">${escapeHtml(a.text || "")}</div>
+          <div class="muted" style="margin:6px 0 0;font-size:.75rem;">${a.createdByName ? escapeHtml(a.createdByName) + " · " : ""}${a.createdAt ? annAgo(a.createdAt) : ""}</div>
+        </div>
+        <button class="danger" data-delete-announcement="${a.id}" style="width:auto;padding:6px 12px;font-size:.78rem;">Delete</button>
+      </div>
+    </div>`).join("") || `<p class="muted">No announcements posted yet.</p>`;
+
+  el.querySelectorAll("[data-delete-announcement]").forEach(btn => btn.addEventListener("click", async () => {
+    if (confirm("Delete this announcement? Members will no longer see it.")) {
+      await deleteDoc(doc(db, "announcements", btn.dataset.deleteAnnouncement));
+    }
+  }));
+}
+
+const annInput = document.getElementById("announcementText");
+const annCount = document.getElementById("announcementCount");
+annInput.addEventListener("input", () => {
+  annCount.textContent = `${annInput.value.length} / ${ANN_MAX_CHARS}`;
+});
+
+document.getElementById("postAnnouncementBtn").addEventListener("click", async () => {
+  const errorEl = document.getElementById("announcementError");
+  errorEl.textContent = "";
+  const text = annInput.value.trim();
+  if (!text) { errorEl.textContent = "Type an announcement first."; return; }
+  if (text.length > ANN_MAX_CHARS) { errorEl.textContent = `Keep it under ${ANN_MAX_CHARS} characters.`; return; }
+
+  const btn = document.getElementById("postAnnouncementBtn");
+  btn.disabled = true;
+  try {
+    const me = allMembers.find(m => m.id === auth.currentUser.uid);
+    await addDoc(collection(db, "announcements"), {
+      text,
+      createdAt: Date.now(),
+      createdBy: auth.currentUser.uid,
+      createdByName: (me && (me.fullName || me.username)) || "Admin"
+    });
+    annInput.value = "";
+    annCount.textContent = `0 / ${ANN_MAX_CHARS}`;
+  } catch (err) {
+    errorEl.textContent = "Couldn't post: " + (err.code || err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
