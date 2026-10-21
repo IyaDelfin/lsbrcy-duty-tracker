@@ -47,6 +47,7 @@ document.getElementById("categoryTabs").addEventListener("click", (e) => {
 });
 
 function initData() {
+  initAnnouncements();
   onSnapshot(query(collection(db, "events")), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderCategoryEvents();
@@ -1158,3 +1159,109 @@ function formatTime12(hhmm) {
   if (h < 12) return `${h}:${mm} AM`;
   return `${h - 12}:${mm} PM`;
 }
+
+
+// =====================================================================
+// ANNOUNCEMENTS — admins post short notices; members see the newest one as
+// a banner at the top of the page, and all of them behind the ✉ button
+// (top right). The ✉ button shows a pulsing badge with the unread count.
+// "Unread" is remembered on this device only (localStorage).
+// =====================================================================
+let allAnnouncements = [];
+let mailPanelOpen = false;
+const BANNER_MAX_AGE_DAYS = 14; // the top banner hides announcements older than this
+
+function annSeenKey() { return "lsbrcy_ann_seen_" + (currentUser ? currentUser.uid : ""); }
+function getAnnSeen() { try { return Number(localStorage.getItem(annSeenKey())) || 0; } catch (e) { return 0; } }
+function setAnnSeen(ts) { try { localStorage.setItem(annSeenKey(), String(ts)); } catch (e) {} }
+
+function annTimeAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(ts).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+function initAnnouncements() {
+  onSnapshot(collection(db, "announcements"), (snap) => {
+    allAnnouncements = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(a => a.text)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    renderAnnouncements();
+  });
+}
+
+function renderAnnouncements() {
+  const seen = getAnnSeen();
+  const unread = allAnnouncements.filter(a => (a.createdAt || 0) > seen).length;
+
+  // ✉ badge
+  const badge = document.getElementById("mailBadge");
+  const btn = document.getElementById("mailBtn");
+  if (badge && btn) {
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 9 ? "9+" : String(unread);
+    btn.classList.toggle("has-unread", unread > 0);
+  }
+
+  // Banner: newest announcement, if recent
+  const bannerEl = document.getElementById("announceBanner");
+  if (bannerEl) {
+    const latest = allAnnouncements[0];
+    const fresh = latest && (Date.now() - (latest.createdAt || 0)) < BANNER_MAX_AGE_DAYS * 86400000;
+    bannerEl.innerHTML = fresh ? `
+      <div class="ann-banner">
+        <div class="ann-banner__icon">📢</div>
+        <div class="ann-banner__body">
+          <div class="ann-banner__label">Announcement · ${escapeHtml(annTimeAgo(latest.createdAt || Date.now()))}</div>
+          <div class="ann-banner__text">${escapeHtml(latest.text)}</div>
+          ${allAnnouncements.length > 1 ? `<button type="button" class="ann-banner__more" id="annSeeAll">See all (${allAnnouncements.length})</button>` : ""}
+        </div>
+      </div>` : "";
+    const seeAll = document.getElementById("annSeeAll");
+    if (seeAll) seeAll.addEventListener("click", () => setMailPanel(true));
+  }
+
+  // Inbox panel (✉)
+  const panel = document.getElementById("mailPanel");
+  if (panel) {
+    panel.hidden = !mailPanelOpen;
+    if (mailPanelOpen) {
+      panel.innerHTML = `
+        <div class="mail-panel__head"><strong>Announcements</strong>
+          <button type="button" class="mail-panel__close" id="mailClose" aria-label="Close">✕</button></div>
+        ${allAnnouncements.length ? allAnnouncements.map(a => `
+          <div class="mail-item${(a.createdAt || 0) > seen ? " is-new" : ""}">
+            <div class="mail-item__text">${escapeHtml(a.text)}</div>
+            <div class="mail-item__meta">${a.createdByName ? escapeHtml(a.createdByName) + " · " : ""}${escapeHtml(annTimeAgo(a.createdAt || Date.now()))}</div>
+          </div>`).join("") : `<div class="mail-empty">No announcements yet.</div>`}`;
+      document.getElementById("mailClose").addEventListener("click", () => setMailPanel(false));
+    }
+  }
+}
+
+function setMailPanel(open) {
+  mailPanelOpen = open;
+  renderAnnouncements();           // draw first, so the "new" highlight shows
+  if (open && allAnnouncements.length) {
+    setAnnSeen(Math.max(...allAnnouncements.map(a => a.createdAt || 0)));
+    const badge = document.getElementById("mailBadge");
+    if (badge) badge.hidden = true;  // clear the badge right away
+    const btn = document.getElementById("mailBtn");
+    if (btn) btn.classList.remove("has-unread");
+  }
+}
+
+document.getElementById("mailBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  setMailPanel(!mailPanelOpen);
+});
+document.addEventListener("click", (e) => {
+  if (mailPanelOpen && !e.target.closest("#mailPanel") && !e.target.closest("#annSeeAll")) setMailPanel(false);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && mailPanelOpen) setMailPanel(false); });
