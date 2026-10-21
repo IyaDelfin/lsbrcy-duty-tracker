@@ -31,8 +31,8 @@ onAuthStateChanged(auth, async (user) => {
   myProfile = snap.data();
 
   document.getElementById("memberName").textContent = myProfile.fullName || myProfile.username;
-  document.getElementById("memberMeta").textContent =
-    `ID: ${myProfile.studentNo || "–"} · Committee: ${myProfile.committee || "–"}`;
+  document.getElementById("memberMetaChips").innerHTML =
+    `<span class="hero-chip">ID: ${escapeHtml(myProfile.studentNo || "–")}</span><span class="hero-chip">${escapeHtml(myProfile.committee || "No committee")}</span>`;
 
   initData();
 });
@@ -78,6 +78,8 @@ function initData() {
 function updateTotalHours() {
   const total = myRecords.reduce((sum, r) => sum + (r.hours || 0), 0);
   document.getElementById("totalHours").textContent = total.toFixed(1);
+  const shiftsEl = document.getElementById("shiftCount");
+  if (shiftsEl) shiftsEl.textContent = myRecords.filter(r => r.timeOut != null && !r.noShow).length;
 }
 
 // ---------- AVAILABLE EVENTS (category tabs + clickable list) ----------
@@ -90,8 +92,7 @@ function renderCategoryEvents() {
       <div class="row" style="align-items:center;">
         <div>
           <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-          <p class="muted" style="margin:0;">${escapeHtml(ev.location || "")}</p>
-          ${formatEventDateRange(ev) ? `<p class="muted" style="margin:2px 0 0;font-size:.78rem;">${formatEventDateRange(ev)}</p>` : ""}
+          <div style="margin:4px 0 0;font-size:.8rem;color:var(--muted);">${formatEventDatesWithLocation(ev)}</div>
           <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0)} volunteer${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0) === 1 ? '' : 's'}</p>
         </div>
         ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
@@ -105,6 +106,74 @@ function renderCategoryEvents() {
     renderEventDetails();
   }));
 
+}
+
+// ---------- SMALL UI HELPERS ----------
+function fmtClock(ts) {
+  return ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–";
+}
+
+function fmtDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function fmtCountdown(ms) {
+  const mins = Math.max(1, Math.ceil(ms / 60000));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function shortDate(dateStr, withYear) {
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  if (withYear) opts.year = "numeric";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString([], opts);
+}
+
+function locPill(loc) {
+  return loc ? `<span class="loc-pill">📍 ${escapeHtml(loc)}</span>` : "";
+}
+
+// Lines of "Mon, Oct 19 – Tue, Oct 20  📍 Location". Uses each date's own
+// location (an override block's location, else the event's basic location);
+// consecutive dates sharing a location are merged into one range.
+function formatEventDatesWithLocation(ev) {
+  const dates = eventDates(ev);
+  if (!dates.length) return locPill((ev.location || "").trim());
+  const nextDay = (d) => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + 1); return ymd(x); };
+  const groups = [];
+  dates.forEach(d => {
+    const key = locationsForDate(ev, d).join(" / ");
+    const last = groups[groups.length - 1];
+    if (last && last.key === key && nextDay(last.end) === d) last.end = d;
+    else groups.push({ start: d, end: d, key });
+  });
+  return groups.map(g => {
+    const label = g.start === g.end ? shortDate(g.start) : `${shortDate(g.start)} – ${shortDate(g.end)}`;
+    return `<div style="margin-bottom:4px;">${escapeHtml(label)}${locPill(g.key)}</div>`;
+  }).join("");
+}
+
+// The member's soonest reservation after today (for the clock card's "next up").
+function findNextReservation() {
+  const today = todayStr();
+  let best = null;
+  for (const ev of allEvents) {
+    const vbd = ev.volunteersByDate || {};
+    for (const date in vbd) {
+      if (date <= today) continue;
+      const entry = (vbd[date] || []).find(v => v.uid === currentUser.uid);
+      if (!entry) continue;
+      const cand = { event: ev, date, startTime: entry.startTime || "", endTime: entry.endTime || "", location: entry.location || ev.location || "" };
+      if (!best || date < best.date || (date === best.date && cand.startTime < best.startTime)) best = cand;
+    }
+  }
+  return best;
 }
 
 // ---------- DATE HELPERS ----------
@@ -162,11 +231,12 @@ function findTodaysReservation() {
     // on to a different event reserved for the same day.
     const alreadyDone = myRecords.some(r => r.eventId === ev.id && r.date === today && r.timeOut != null);
     if (alreadyDone) continue;
-    candidates.push({ event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null });
+    candidates.push({ event: ev, date: today, startTime: entry.startTime || null, endTime: entry.endTime || null, location: entry.location || ev.location || "" });
   }
   if (!candidates.length) return null;
-  // Prefer whichever event you currently have selected in the list, if
-  // it's among today's still-open reservations.
+  // Earliest shift first; but prefer whichever event you currently have
+  // selected in the list, if it's among today's still-open reservations.
+  candidates.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
   return candidates.find(c => c.event.id === selectedEventId) || candidates[0];
 }
 
@@ -193,6 +263,7 @@ function renderWeeklyReservations() {
   if (!el) return;
 
   const { start, end } = getWeekRange();
+  const today = todayStr();
   const items = [];
 
   for (const ev of allEvents) {
@@ -211,21 +282,54 @@ function renderWeeklyReservations() {
     }
   }
 
-  items.sort((a, b) => a.date.localeCompare(b.date));
+  items.sort((a, b) => a.date.localeCompare(b.date) || (a.entry.startTime || "").localeCompare(b.entry.startTime || ""));
+
+  const rangeLabel = `${start.toLocaleDateString([], { month: "short", day: "numeric" })} – ${end.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  const head = `
+    <div class="sec-head">
+      <h3 style="margin:0;">This Week</h3>
+      <span class="sec-sub">${rangeLabel} · ${items.length} reservation${items.length === 1 ? "" : "s"}</span>
+    </div>`;
 
   if (!items.length) {
-    el.innerHTML = `<p class="muted">No reservations this week.</p>`;
+    el.innerHTML = head + `<div class="empty-state">No reservations this week.<br><span>Pick an event below to reserve a shift.</span></div>`;
     return;
   }
 
-  el.innerHTML = items.map(({ ev, date, entry, onDuty }) => {
-    const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-    const timeLabel = entry.startTime ? ` · ${formatTime12(entry.startTime)}–${formatTime12(entry.endTime)}` : "";
-    return `<div class="row" style="align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
-        <div><strong>${escapeHtml(ev.name)}</strong><p class="muted" style="margin:2px 0 0;">${dateLabel}${timeLabel}</p></div>
-        ${onDuty ? `<span class="badge blue">On Duty</span>` : `<span class="badge green">Reserved</span>`}
+  el.innerHTML = head + items.map(({ ev, date, entry, onDuty }) => {
+    const d = new Date(date + "T00:00:00");
+    const dow = d.toLocaleDateString([], { weekday: "short" });
+    const isToday = date === today;
+    const loc = entry.location || ev.location || "";
+    const timeText = entry.startTime ? `${formatTime12(entry.startTime)} – ${formatTime12(entry.endTime)}` : "Any time";
+    const badge = onDuty ? `<span class="badge blue">On Duty</span>`
+      : isToday ? `<span class="badge orange">Today</span>`
+      : `<span class="badge green">Reserved</span>`;
+    return `
+      <div class="res-item${isToday ? " today" : ""}">
+        <div class="res-date"><span>${dow}</span><strong>${d.getDate()}</strong></div>
+        <div class="res-main">
+          <div class="res-title">${escapeHtml(ev.name)}</div>
+          <div class="res-sub">${timeText}${locPill(loc)}</div>
+        </div>
+        <div class="res-side">
+          ${badge}
+          ${onDuty ? "" : `<button class="danger res-cancel" data-cancel-ev="${ev.id}" data-cancel-date="${date}">Cancel</button>`}
+        </div>
       </div>`;
   }).join("");
+
+  el.querySelectorAll("[data-cancel-ev]").forEach(btn => btn.addEventListener("click", async () => {
+    const ev = allEvents.find(e => e.id === btn.dataset.cancelEv);
+    const date = btn.dataset.cancelDate;
+    if (!ev) return;
+    const entry = ((ev.volunteersByDate || {})[date] || []).find(v => v.uid === currentUser.uid);
+    if (!entry) return;
+    if (!confirm(`Cancel your reservation for ${ev.name} on ${shortDate(date)}?`)) return;
+    btn.disabled = true;
+    try { await cancelReservation(ev, date, entry); }
+    catch (err) { alert("Could not cancel: " + (err.code || err.message)); btn.disabled = false; }
+  }));
 }
 
 // How many dates this member has already reserved/attempted on this event — counts
@@ -786,47 +890,97 @@ function renderEventDetails() {
 
 
 // ---------- CLOCK IN / OUT ----------
-function renderClockCard() {
-  const btn = document.getElementById("clockBtn");
-  const label = document.getElementById("selectedEventLabel");
+let clockBusy = false; // true while a clock in/out write is in flight (blocks re-renders)
 
+function renderClockCard() {
+  if (clockBusy) return;
+  const btn = document.getElementById("clockBtn");
+  const box = document.getElementById("clockStatus");
+  if (!btn || !box) return;
+
+  const line = (label, value) => value ? `<div class="clock-line"><span>${label}</span><strong>${value}</strong></div>` : "";
+  const timeText = (s, e) => s ? `${formatTime12(s)} – ${formatTime12(e)}` : "";
+  const now = new Date();
+
+  // ---- currently on duty ----
   if (openRecord) {
     const ev = allEvents.find(e => e.id === openRecord.eventId);
-    btn.textContent = `Clock Out (${ev ? ev.name : openRecord.eventName || ""})`;
+    const entry = ev ? ((ev.volunteersByDate || {})[openRecord.date] || []).find(v => v.uid === currentUser.uid) : null;
+    const loc = (entry && entry.location) || (ev && ev.location) || "";
+    box.innerHTML = `
+      <div class="clock-top"><span class="badge green"><span class="dot live"></span>On duty</span>${openRecord.late ? `<span class="badge orange">Late</span>` : ""}</div>
+      <h3 class="clock-title">${escapeHtml(ev ? ev.name : (openRecord.eventName || "Duty"))}</h3>
+      <div class="clock-timer" id="clockElapsed">${fmtDuration(Date.now() - openRecord.timeIn)}</div>
+      <div class="clock-timer-label">time on duty</div>
+      ${line("Clocked in", fmtClock(openRecord.timeIn))}
+      ${line("Shift", timeText(openRecord.shiftStart, openRecord.shiftEnd))}
+      ${line("Location", loc ? locPill(loc) : "")}
+      ${line("PIC", openRecord.pic ? escapeHtml(openRecord.pic) : "")}`;
+    btn.textContent = "Clock Out";
     btn.disabled = false;
-    label.textContent = `Clocked in since ${new Date(openRecord.timeIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
     return;
   }
 
+  // ---- reserved shift today ----
   const reservation = findTodaysReservation();
-  if (!reservation) {
+  if (reservation) {
+    let waiting = false, opensLine = "", note = "";
+    if (reservation.startTime) {
+      const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
+      const earliest = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
+      if (now < earliest) {
+        waiting = true;
+        opensLine = `${earliest.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · in ${fmtCountdown(earliest - now)}`;
+      } else if (now.getTime() > scheduledStart.getTime() + NO_SHOW_MINUTES * 60000) {
+        note = `<div class="clock-note red">Past the no-show cutoff — this reservation may be cancelled automatically.</div>`;
+      } else if (now.getTime() > scheduledStart.getTime() + LATE_GRACE_MINUTES * 60000) {
+        note = `<div class="clock-note orange">Clocking in now will be marked late.</div>`;
+      }
+    }
+    box.innerHTML = `
+      <div class="clock-top">${waiting ? `<span class="badge orange">Not open yet</span>` : `<span class="badge green"><span class="dot"></span>Ready to clock in</span>`}</div>
+      <h3 class="clock-title">${escapeHtml(reservation.event.name)}</h3>
+      ${line("Today's shift", timeText(reservation.startTime, reservation.endTime))}
+      ${line("Location", reservation.location ? locPill(reservation.location) : "")}
+      ${line("PIC", reservation.event.pic ? escapeHtml(reservation.event.pic) : "")}
+      ${line("Clock-in opens", opensLine)}
+      ${note}`;
     btn.textContent = "Clock In";
-    btn.disabled = true;
-    label.textContent = "Select an event above first.";
+    btn.disabled = waiting;
     return;
   }
 
-  if (reservation.startTime) {
-    const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
-    const earliestClockIn = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
-    if (new Date() < earliestClockIn) {
-      btn.textContent = `Clock In (${reservation.event.name})`;
-      btn.disabled = true;
-      label.textContent = `Today's reserved shift: ${reservation.event.name} · opens at ${earliestClockIn.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
-      return;
-    }
-  }
-
-  btn.textContent = `Clock In (${reservation.event.name})`;
-  btn.disabled = false;
-  label.textContent = `Today's reserved shift: ${reservation.event.name}`;
+  // ---- nothing to clock into ----
+  const today = todayStr();
+  const doneToday = myRecords.some(r => r.date === today && r.timeOut != null && !r.noShow);
+  const next = findNextReservation();
+  box.innerHTML = `
+    <div class="clock-top"><span class="badge blue">${doneToday ? "Done for today" : "No shift today"}</span></div>
+    <div class="clock-empty">${doneToday ? "Nice work — today's duty is logged." : "Reserve a shift under Available Events to clock in here."}</div>
+    ${next ? `
+      <div class="clock-next">
+        <span>Next reservation</span>
+        <strong>${escapeHtml(next.event.name)}</strong>
+        <div>${shortDate(next.date)}${next.startTime ? ` · ${formatTime12(next.startTime)} – ${formatTime12(next.endTime)}` : ""}${locPill(next.location)}</div>
+      </div>` : ""}`;
+  btn.textContent = "Clock In";
+  btn.disabled = true;
 }
+
+// Live timer while on duty, and a periodic refresh so "opens in" / late / no-show
+// hints stay current without reloading the page.
+setInterval(() => {
+  const t = document.getElementById("clockElapsed");
+  if (t && openRecord && openRecord.timeIn) t.textContent = fmtDuration(Date.now() - openRecord.timeIn);
+}, 1000);
+setInterval(() => { if (currentUser && myProfile) { renderClockCard(); renderWeeklyReservations(); } }, 30000);
 
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
   const btn = document.getElementById("clockBtn");
   const errEl = document.getElementById("clockError");
   errEl.textContent = "";
+  clockBusy = true;
   btn.disabled = true;
   try {
 
@@ -917,7 +1071,8 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
   } catch (err) {
     errEl.textContent = "Clock in/out failed: " + (err.code || err.message);
   } finally {
-    btn.disabled = false;
+    clockBusy = false;
+    renderClockCard();
   }
 });
 
@@ -932,37 +1087,60 @@ function renderEventSubTabs() {
   el.innerHTML = tabs.map(t => `<button data-ev="${t.id}" class="${activeEventFilter === t.id ? 'active' : ''}">${escapeHtml(t.name)}</button>`).join("");
   el.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeEventFilter = btn.dataset.ev;
+    logsVisible = LOGS_PAGE_SIZE;
     renderEventSubTabs();
     renderRecords();
   }));
 }
 
+const LOGS_PAGE_SIZE = 15;
+let logsVisible = LOGS_PAGE_SIZE;
+
 function renderRecords() {
-  const filtered = activeEventFilter === "all" ? myRecords : myRecords.filter(r => r.eventId === activeEventFilter);
   const el = document.getElementById("recordsList");
+  if (!el) return;
+  const filtered = activeEventFilter === "all" ? myRecords : myRecords.filter(r => r.eventId === activeEventFilter);
+  const totalHours = filtered.reduce((s, r) => s + (r.hours || 0), 0);
+  const visible = filtered.slice(0, logsVisible);
+
+  const tile = (label, value, color) => `
+    <div class="mini-stat"><strong style="color:var(--${color});">${value}</strong><span>${label}</span></div>`;
+
+  const rowHtml = (r) => {
+    const day = r.date || (r.timeIn ? ymd(new Date(r.timeIn)) : "");
+    const dayLabel = day ? shortDate(day, true) : "–";
+    const shiftText = r.shiftStart ? `${formatTime12(r.shiftStart)} – ${formatTime12(r.shiftEnd)}` : (r.shift || "");
+    const inOut = r.noShow ? "Did not clock in" : `${fmtClock(r.timeIn)} → ${r.timeOut ? fmtClock(r.timeOut) : "–"}`;
+    const isOpen = r.timeIn && !r.timeOut && !r.noShow;
+    const status = r.noShow ? `<span class="badge red">No Show</span>`
+      : isOpen ? `<span class="badge blue">On Duty</span>`
+      : `<span class="badge green">Completed</span>`;
+    const hrs = r.noShow ? "0.0" : (r.hours != null ? r.hours.toFixed(1) : "–");
+    return `
+      <div class="log-row">
+        <div class="log-main">
+          <div class="log-title">${escapeHtml(r.eventName || "")}</div>
+          <div class="log-sub">${dayLabel}</div>
+          <div class="log-sub">${shiftText ? `${escapeHtml(shiftText)} · ` : ""}${inOut}</div>
+          <div class="log-chips">${status}${r.late ? `<span class="badge orange">Late</span>` : ""}${r.earlyOut ? `<span class="badge blue">Early Out</span>` : ""}${r.addedByAdmin ? `<span class="badge blue">Manual</span>` : ""}</div>
+        </div>
+        <div class="log-hrs"><strong>${hrs}</strong><span>hrs</span></div>
+      </div>`;
+  };
+
   el.innerHTML = `
-    <div class="card">
-      <h3>My Duty Logs</h3>
-      <div class="row">
-        <p class="muted">Late Count: <strong style="color:var(--orange);">${myRecords.filter(r => r.late).length}</strong></p>
-        <p class="muted">Early Out Count: <strong style="color:var(--blue);">${myRecords.filter(r => r.earlyOut).length}</strong></p>
-        <p class="muted">No Show Count: <strong style="color:var(--red);">${myRecords.filter(r => r.noShow).length}</strong></p>
-      </div>
-      <table>
-        <tr><th>Event</th><th>Date</th><th>Shift</th><th>In</th><th>Out</th><th>Hrs</th><th>Status</th></tr>
-        ${filtered.map(r => `
-          <tr>
-            <td>${escapeHtml(r.eventName || "")}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
-            <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
-            <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
-            <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}</td>
-          </tr>`).join("")}
-      </table>
-      ${filtered.length === 0 ? `<p class="muted">No duty logs yet.</p>` : ""}
-    </div>`;
+    <div class="mini-stats">
+      ${tile("Late", myRecords.filter(r => r.late).length, "orange")}
+      ${tile("Early out", myRecords.filter(r => r.earlyOut).length, "blue")}
+      ${tile("No show", myRecords.filter(r => r.noShow).length, "red")}
+    </div>
+    <div class="log-total"><strong>${filtered.length}</strong> record${filtered.length === 1 ? "" : "s"} · <strong>${totalHours.toFixed(1)}</strong> hrs</div>
+    ${visible.map(rowHtml).join("")}
+    ${filtered.length > visible.length ? `<button class="secondary" id="moreLogsBtn" style="width:100%;margin-top:10px;">Show more (${filtered.length - visible.length} more)</button>` : ""}
+    ${filtered.length === 0 ? `<div class="empty-state">No duty logs yet.</div>` : ""}`;
+
+  const more = document.getElementById("moreLogsBtn");
+  if (more) more.addEventListener("click", () => { logsVisible += LOGS_PAGE_SIZE; renderRecords(); });
 }
 
 function escapeHtml(str) {
