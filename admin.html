@@ -6,6 +6,11 @@
 <title>Admin — LSBRCY Duty Tracker</title>
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+  #announcementText { width:100%; background:var(--card-2); border:1px solid var(--border); color:var(--text);
+    padding:12px 14px; border-radius:10px; font-size:1rem; font-family:inherit; resize:vertical; margin:0; }
+  #announcementText:focus { outline:none; border-color:var(--red); box-shadow:0 0 0 3px rgba(217,51,46,.18); }
+</style>
 </head>
 
 <body>
@@ -21,6 +26,7 @@
       <button data-tab="reports">Reports</button>
       <button class="active" data-tab="overview">Overview</button>
       <button data-tab="events">Events</button>
+      <button data-tab="announcements">Announcements</button>
       <button data-tab="members">Members</button>
       <button data-tab="records">Duty Records</button>
     </div>
@@ -181,6 +187,25 @@
       </div>
       <div id="eventsList"></div>
 
+    </div>
+
+    <!-- ANNOUNCEMENTS -->
+    <div id="tab-announcements" class="tabpanel" style="display:none;">
+      <div class="card ev-form">
+        <div class="ev-form__head">
+          <h3>Post an Announcement</h3>
+          <p>A short notice for members. It shows at the top of the member page and behind their ✉ button.</p>
+        </div>
+        <div class="ev-field" style="margin-top:14px;">
+          <label for="announcementText">Message</label>
+          <textarea id="announcementText" rows="3" maxlength="280" placeholder="e.g. Bring your ID this Saturday."></textarea>
+          <small id="announcementCount" style="text-align:right;">0 / 280</small>
+        </div>
+        <div class="error" id="announcementError"></div>
+        <div class="ev-actions"><button class="primary" id="postAnnouncementBtn">📢 Post Announcement</button></div>
+      </div>
+      <h3 style="margin:18px 0 10px;">Posted</h3>
+      <div id="announcementsList"></div>
     </div>
 
     <!-- MEMBERS -->
