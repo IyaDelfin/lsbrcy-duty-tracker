@@ -1165,7 +1165,9 @@ function formatTime12(hhmm) {
 // ANNOUNCEMENTS — admins post short notices; members see the newest one as
 // a banner at the top of the page, and all of them behind the ✉ button
 // (top right). The ✉ button shows a pulsing badge with the unread count.
-// "Unread" is remembered on this device only (localStorage).
+// "Unread" and "dismissed" are remembered on this device only (localStorage).
+// The banner has a ✕ button: dismissing hides that announcement's banner
+// until a NEWER announcement is posted (it stays available under ✉).
 // =====================================================================
 let allAnnouncements = [];
 let mailPanelOpen = false;
@@ -1174,6 +1176,11 @@ const BANNER_MAX_AGE_DAYS = 14; // the top banner hides announcements older than
 function annSeenKey() { return "lsbrcy_ann_seen_" + (currentUser ? currentUser.uid : ""); }
 function getAnnSeen() { try { return Number(localStorage.getItem(annSeenKey())) || 0; } catch (e) { return 0; } }
 function setAnnSeen(ts) { try { localStorage.setItem(annSeenKey(), String(ts)); } catch (e) {} }
+
+// Remembers which announcement's banner the member closed (by its id).
+function annDismissedKey() { return "lsbrcy_ann_dismissed_" + (currentUser ? currentUser.uid : ""); }
+function getAnnDismissed() { try { return localStorage.getItem(annDismissedKey()) || ""; } catch (e) { return ""; } }
+function setAnnDismissed(id) { try { localStorage.setItem(annDismissedKey(), String(id)); } catch (e) {} }
 
 function annTimeAgo(ts) {
   const mins = Math.floor((Date.now() - ts) / 60000);
@@ -1209,20 +1216,30 @@ function renderAnnouncements() {
     btn.classList.toggle("has-unread", unread > 0);
   }
 
-  // Banner: newest announcement, if recent
+  // Banner: newest announcement, if recent and not dismissed by this member
   const bannerEl = document.getElementById("announceBanner");
   if (bannerEl) {
     const latest = allAnnouncements[0];
-    const fresh = latest && (Date.now() - (latest.createdAt || 0)) < BANNER_MAX_AGE_DAYS * 86400000;
+    const fresh = latest
+      && (Date.now() - (latest.createdAt || 0)) < BANNER_MAX_AGE_DAYS * 86400000
+      && latest.id !== getAnnDismissed();
     bannerEl.innerHTML = fresh ? `
-      <div class="ann-banner">
+      <div class="ann-banner" style="position:relative;">
+        <button type="button" id="annDismiss" aria-label="Dismiss announcement" title="Dismiss"
+          style="position:absolute;top:8px;right:8px;width:28px;height:28px;min-width:0;padding:0;margin:0;border:0;border-radius:50%;background:rgba(255,255,255,.08);color:var(--muted);font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
         <div class="ann-banner__icon">📢</div>
-        <div class="ann-banner__body">
+        <div class="ann-banner__body" style="padding-right:30px;">
           <div class="ann-banner__label">Announcement · ${escapeHtml(annTimeAgo(latest.createdAt || Date.now()))}</div>
           <div class="ann-banner__text">${escapeHtml(latest.text)}</div>
           ${allAnnouncements.length > 1 ? `<button type="button" class="ann-banner__more" id="annSeeAll">See all (${allAnnouncements.length})</button>` : ""}
         </div>
       </div>` : "";
+    const dismiss = document.getElementById("annDismiss");
+    if (dismiss) dismiss.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setAnnDismissed(latest.id);
+      renderAnnouncements();
+    });
     const seeAll = document.getElementById("annSeeAll");
     if (seeAll) seeAll.addEventListener("click", () => setMailPanel(true));
   }
