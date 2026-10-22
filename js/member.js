@@ -71,6 +71,9 @@ function initData() {
       renderEventSubTabs();
       renderRecords();
       renderWeeklyReservations();
+      // Re-render the event details too, so a just-completed shift flips from
+      // "Reserved + Cancel" to "Completed" right away.
+      renderEventDetails();
     }
   );
 }
@@ -404,7 +407,7 @@ function renderWeeklyReservations() {
         </div>
         <div class="res-side">
           ${badge}
-          ${onDuty ? "" : `<button class="danger res-cancel" data-cancel-ev="${ev.id}" data-cancel-date="${date}">Cancel</button>`}
+          ${onDuty || date < today ? "" : `<button class="danger res-cancel" data-cancel-ev="${ev.id}" data-cancel-date="${date}">Cancel</button>`}
         </div>
       </div>`;
   }).join("");
@@ -807,6 +810,9 @@ function renderEventDetails() {
     const alreadyReserved = !!myEntry;
     const isActiveShift = !!(openRecord && openRecord.eventId === ev.id && openRecord.date === date);
     const isPastDate = date < today; // "YYYY-MM-DD" strings compare correctly lexically
+    // Already clocked out of this event+date (finished shift)
+    const myRecord = myRecords.find(r => r.eventId === ev.id && r.date === date);
+    const isCompleted = !!(myRecord && myRecord.timeOut != null && !myRecord.noShow);
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
 
     // Today's start options drop any time that's already passed.
@@ -829,12 +835,28 @@ function renderEventDetails() {
 
     let actionHtml;
     if (alreadyReserved) {
-      actionHtml = `<div style="text-align:right;">
-          <span class="badge green">Reserved${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}${myEntry.location ? ` · ${escapeHtml(myEntry.location)}` : ""}</span><br>
-          ${isActiveShift
-            ? `<p class="muted" style="margin:4px 0 0;font-size:.7rem;">Currently on duty</p>`
-            : `<button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>`}
-        </div>`;
+      const slotText = `${myEntry.startTime ? `: ${formatTime12(myEntry.startTime)}–${formatTime12(myEntry.endTime)}` : ""}${myEntry.location ? ` · ${escapeHtml(myEntry.location)}` : ""}`;
+      if (isCompleted) {
+        // Shift is done: no Cancel button
+        actionHtml = `<div style="text-align:right;">
+            <span class="badge blue">Completed${slotText}</span>
+          </div>`;
+      } else if (isActiveShift) {
+        actionHtml = `<div style="text-align:right;">
+            <span class="badge green">Reserved${slotText}</span><br>
+            <p class="muted" style="margin:4px 0 0;font-size:.7rem;">Currently on duty</p>
+          </div>`;
+      } else if (isPastDate) {
+        // Date already passed and never completed: can't cancel it anymore
+        actionHtml = `<div style="text-align:right;">
+            <span class="badge red">Past${slotText}</span>
+          </div>`;
+      } else {
+        actionHtml = `<div style="text-align:right;">
+            <span class="badge green">Reserved${slotText}</span><br>
+            <button class="danger" data-cancel-date="${date}" style="padding:4px 10px;font-size:.7rem;margin-top:4px;">Cancel</button>
+          </div>`;
+      }
     } else if (full) {
       actionHtml = `<span class="badge red">Full</span>`;
     } else if (atMemberLimit) {
