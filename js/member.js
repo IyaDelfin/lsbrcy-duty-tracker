@@ -84,21 +84,111 @@ function updateTotalHours() {
 }
 
 // ---------- AVAILABLE EVENTS (category tabs + clickable list) ----------
+// Open/closed state of each week section in the Available Events list
+// (key -> true/false). Weeks not in here use their default (this/next week open).
+const weekOpenState = {};
+
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return ymd(d);
+}
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+
+// Distinct locations across all of an event's dates (falls back to its basic location).
+function eventLocationList(ev) {
+  const set = [];
+  eventDates(ev).forEach(d => locationsForDate(ev, d).forEach(l => { if (l && !set.includes(l)) set.push(l); }));
+  if (!set.length && ev.location) set.push(ev.location);
+  return set;
+}
+
 function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
   const active = allEvents.filter(e => e.status === "active" && !e.manualOnly && (e.category || "clinic") === activeCategory);
 
-  listEl.innerHTML = active.map(ev => `
-    <div class="event-list-item${selectedEventId === ev.id ? ' selected' : ''}" data-event-id="${ev.id}">
+  if (!active.length) {
+    listEl.innerHTML = `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+    return;
+  }
+
+  // ---- group events by the week of their next upcoming date ----
+  const today = todayStr();
+  const thisMon = mondayOf(today);
+  const nextMon = addDaysStr(thisMon, 7);
+  const groups = {};
+  active.forEach(ev => {
+    const dates = eventDates(ev).slice().sort();
+    let key, anchor = "";
+    if (!dates.length) { key = "tba"; }
+    else {
+      anchor = dates.find(d => d >= today) || "";
+      if (anchor) key = mondayOf(anchor);
+      else { key = "earlier"; anchor = dates[dates.length - 1]; }
+    }
+    (groups[key] = groups[key] || []).push({ ev, anchor });
+  });
+
+  const weekKeys = Object.keys(groups).filter(k => k !== "earlier" && k !== "tba").sort();
+  const orderedKeys = [...weekKeys, ...(groups.earlier ? ["earlier"] : []), ...(groups.tba ? ["tba"] : [])];
+  const fmtMD = (d) => new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
+
+  const cardHtml = ({ ev }) => {
+    const sel = selectedEventId === ev.id;
+    const vols = Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0);
+    const locs = eventLocationList(ev);
+    const shownLocs = locs.slice(0, 3).map(l => locPill(l)).join("");
+    const moreLocs = locs.length > 3 ? `<span style="margin-left:6px;color:var(--muted);font-size:.75rem;">+${locs.length - 3} more</span>` : "";
+    const dateLine = formatEventDateRange(ev);
+    return `
+    <div class="event-list-item${sel ? ' selected' : ''}" data-event-id="${ev.id}" style="margin-bottom:8px;">
       <div class="row" style="align-items:center;">
-        <div>
+        <div style="min-width:0;">
           <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-          <div style="margin:4px 0 0;font-size:.8rem;color:var(--muted);">${formatEventDatesWithLocation(ev)}</div>
-          <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0)} volunteer${Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0) === 1 ? '' : 's'}</p>
+          ${dateLine ? `<div style="margin:4px 0 0;font-size:.82rem;font-weight:600;">${escapeHtml(dateLine)}</div>` : ""}
+          ${(shownLocs || moreLocs) ? `<div style="margin:6px 0 0 -6px;line-height:1.9;">${shownLocs}${moreLocs}</div>` : ""}
+          <p class="muted" style="margin:4px 0 0;font-size:.78rem;">${vols} volunteer${vols === 1 ? '' : 's'}</p>
         </div>
-        ${selectedEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
+        ${sel ? `<span class="badge red" style="flex:0 0 auto;">Selected</span>` : ""}
       </div>
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS[activeCategory]} right now.</p>`;
+    </div>`;
+  };
+
+  listEl.innerHTML = orderedKeys.map(key => {
+    const items = groups[key].slice().sort((a, b) => (a.anchor || "9999").localeCompare(b.anchor || "9999") || a.ev.name.localeCompare(b.ev.name));
+    let title, sub = "", defaultOpen;
+    if (key === "tba") { title = "Dates to be announced"; defaultOpen = true; }
+    else if (key === "earlier") { title = "Earlier"; sub = "dates already passed"; defaultOpen = false; }
+    else {
+      title = key === thisMon ? "This week" : key === nextMon ? "Next week" : `Week of ${fmtMD(key)}`;
+      sub = `${fmtMD(key)} – ${fmtMD(addDaysStr(key, 6))}`;
+      defaultOpen = key === thisMon || key === nextMon;
+    }
+    const hasSelected = items.some(i => i.ev.id === selectedEventId);
+    const open = hasSelected ? true : (key in weekOpenState ? weekOpenState[key] : defaultOpen);
+    return `
+    <div class="wk-group">
+      <div class="wk-head" data-week-toggle="${key}" style="display:flex;align-items:center;gap:10px;padding:10px 4px;margin:6px 0 8px;border-bottom:1px solid var(--border);cursor:pointer;">
+        <span style="color:var(--red);font-size:.8rem;width:12px;">${open ? "▾" : "▸"}</span>
+        <strong style="font-size:.95rem;">${title}</strong>
+        <span style="color:var(--muted);font-size:.78rem;">${sub}</span>
+        <span style="margin-left:auto;background:var(--card-2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;padding:1px 9px;border-radius:999px;">${items.length} event${items.length === 1 ? "" : "s"}</span>
+      </div>
+      ${open ? items.map(cardHtml).join("") : ""}
+    </div>`;
+  }).join("");
+
+  listEl.querySelectorAll('[data-week-toggle]').forEach(h => h.addEventListener("click", () => {
+    const key = h.dataset.weekToggle;
+    const isOpen = h.querySelector("span").textContent.trim() === "▾";
+    weekOpenState[key] = !isOpen;
+    renderCategoryEvents();
+  }));
 
   listEl.querySelectorAll('[data-event-id]').forEach(card => card.addEventListener("click", () => {
     selectedEventId = card.dataset.eventId;
@@ -106,7 +196,6 @@ function renderCategoryEvents() {
     renderCategoryEvents();
     renderEventDetails();
   }));
-
 }
 
 // ---------- SMALL UI HELPERS ----------
@@ -780,7 +869,7 @@ function renderEventDetails() {
       <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
         <div class="row" style="align-items:center;">
           <div data-toggle-date="${date}" style="cursor:pointer;">
-            <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
+            <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>${locPill(locationsForDate(ev, date).join(" / "))}
             ${(ev.dateOverrides && ev.dateOverrides[date] && ev.dateOverrides[date].length) ? `<span class="badge orange" style="margin-left:4px;font-size:.65rem;">Custom schedule</span>` : ''}
             ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
 
