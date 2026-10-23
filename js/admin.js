@@ -185,7 +185,10 @@ function renderWeekGroups(scope, list, cardFn, opts = {}) {
         <span style="color:var(--red);font-size:.8rem;width:12px;">${open ? "▾" : "▸"}</span>
         <strong style="font-size:.95rem;">${title}</strong>
         <span style="color:var(--muted);font-size:.78rem;">${sub}</span>
-        <span style="margin-left:auto;background:var(--card-2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;padding:1px 9px;border-radius:999px;">${items.length} event${items.length === 1 ? "" : "s"}</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+          ${opts.exportWeek && key !== "earlier" && key !== "tba" ? `<button class="secondary" data-export-week="${key}" style="width:auto;margin:0;padding:3px 10px;font-size:.72rem;">⬇ Excel</button>` : ""}
+          <span style="background:var(--card-2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;padding:1px 9px;border-radius:999px;">${items.length} event${items.length === 1 ? "" : "s"}</span>
+        </span>
       </div>
       ${open ? items.map(i => cardFn(i.ev)).join("") : ""}
     </div>`;
@@ -193,6 +196,14 @@ function renderWeekGroups(scope, list, cardFn, opts = {}) {
 }
 
 function wireWeekToggles(container, rerender) {
+  container.querySelectorAll("[data-export-week]").forEach(b => b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const from = b.dataset.exportWeek;
+    b.disabled = true;
+    try { await exportAttendanceRange(from, addDaysStr(from, 6), "Week of " + shortRangeLabel(from, addDaysStr(from, 6))); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { b.disabled = false; }
+  }));
   container.querySelectorAll("[data-week-toggle]").forEach(h => h.addEventListener("click", () => {
     weekOpenState[h.dataset.weekToggle] = h.dataset.open !== "1";
     rerender();
@@ -226,7 +237,7 @@ function renderCategoryEvents() {
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
     </div>`;
 
-  listEl.innerHTML = renderWeekGroups("ov", active, overviewCard, { forceOpenId: viewedCategoryEventId })
+  listEl.innerHTML = renderWeekGroups("ov", active, overviewCard, { forceOpenId: viewedCategoryEventId, exportWeek: true })
     || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
   wireWeekToggles(listEl, renderCategoryEvents);
 
@@ -759,7 +770,7 @@ function renderEvents() {
     </div>`;
   };
 
-  el.innerHTML = renderWeekGroups("ev", visible, cardHtml, { openAll: true, openEarlier: evStatusFilter === "completed", forceOpenId: attendanceOpenFor })
+  el.innerHTML = renderWeekGroups("ev", visible, cardHtml, { openAll: true, openEarlier: evStatusFilter === "completed", forceOpenId: attendanceOpenFor, exportWeek: true })
     || `<p class="muted">No events match this filter.</p>`;
   wireWeekToggles(el, renderEvents);
 
@@ -1519,6 +1530,36 @@ async function exportAllActiveEventsToExcel() {
 // ---------- REPORTS TAB (hours by committee + leaderboard) ----------
 let reportCommittee = "all";
 let reportShowAll = false;
+let reportRange = "all";   // all | week | lastweek | month | custom
+let reportFrom = "";       // custom range (YYYY-MM-DD)
+let reportTo = "";
+
+function shortRangeLabel(from, to) {
+  const f = (d) => new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
+  return from && to ? `${f(from)} – ${f(to)}` : from ? `from ${f(from)}` : to ? `until ${f(to)}` : "All time";
+}
+
+// {from, to, label} for the selected report period. Empty from/to = open ended.
+function reportBounds() {
+  const today = localDateStr();
+  const mon = mondayOf(today);
+  if (reportRange === "week") return { from: mon, to: addDaysStr(mon, 6), label: "This week" };
+  if (reportRange === "lastweek") return { from: addDaysStr(mon, -7), to: addDaysStr(mon, -1), label: "Last week" };
+  if (reportRange === "month") {
+    const d = new Date();
+    const first = localDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
+    const last = localDateStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+    return { from: first, to: last, label: "This month" };
+  }
+  if (reportRange === "custom") return { from: reportFrom, to: reportTo, label: "Custom range" };
+  return { from: "", to: "", label: "All time" };
+}
+
+function dateInBounds(date, b) {
+  if (!b.from && !b.to) return true;
+  if (!date) return false;
+  return (!b.from || date >= b.from) && (!b.to || date <= b.to);
+}
 
 function computeHoursReport() {
   const memberById = new Map(allMembers.map(m => [m.id, m]));
@@ -1532,7 +1573,9 @@ function computeHoursReport() {
   allMembers.filter(m => m.role !== "admin").forEach(m => bucket(m.committee || "Unassigned").members.add(m.id));
 
   const byMember = new Map();
+  const bounds = reportBounds();
   for (const r of allRecords) {
+    if (!dateInBounds(recordDate(r), bounds)) continue;
     const committee = committeeOf(r);
     const c = bucket(committee);
     const h = r.hours || 0;           // active (not clocked out) and no-show records count as 0
@@ -1569,7 +1612,27 @@ function renderReports() {
   const board = reportShowAll ? ranked : ranked.slice(0, 10);
   const medal = (i) => ["🥇", "🥈", "🥉"][i] || (i + 1);
 
+  const bounds = reportBounds();
+  const rangeText = shortRangeLabel(bounds.from, bounds.to);
+  const rangeBtn = (id, label) => `<button data-rr="${id}" class="${reportRange === id ? "active" : ""}">${label}</button>`;
+
   el.innerHTML = `
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h3 style="margin:0;">Period</h3>
+        <button class="secondary" id="exportAttendanceRangeBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">⬇ Attendance (Excel)</button>
+      </div>
+      <div class="tabs" id="reportRangeTabs" style="margin-top:10px;">
+        ${rangeBtn("all", "All time")}${rangeBtn("week", "This week")}${rangeBtn("lastweek", "Last week")}${rangeBtn("month", "This month")}${rangeBtn("custom", "Custom")}
+      </div>
+      ${reportRange === "custom" ? `
+        <div class="row" style="gap:10px;">
+          <div><p class="muted" style="margin:0 0 4px;font-size:.75rem;">From</p><input type="date" id="reportFromInput" value="${reportFrom}" style="margin:0;"></div>
+          <div><p class="muted" style="margin:0 0 4px;font-size:.75rem;">To</p><input type="date" id="reportToInput" value="${reportTo}" style="margin:0;"></div>
+        </div>` : ""}
+      <p class="muted" style="margin:10px 0 0;">Showing: <strong style="color:var(--text);">${bounds.label}</strong>${bounds.from || bounds.to ? ` · ${rangeText}` : ""}. The attendance export lists every event's reservations and duty records in this period.</p>
+    </div>
+
     <div class="card">
       <div class="row" style="align-items:center;">
         <h3 style="margin:0;">Hours by Committee</h3>
@@ -1614,6 +1677,23 @@ function renderReports() {
       ${ranked.length > 10 ? `<button class="secondary" id="toggleBoardBtn" style="width:auto;padding:6px 14px;font-size:.8rem;margin-top:8px;">${reportShowAll ? "Show top 10" : `Show all (${ranked.length})`}</button>` : ""}
     </div>`;
 
+  el.querySelectorAll("[data-rr]").forEach(b => b.addEventListener("click", () => {
+    reportRange = b.dataset.rr;
+    reportShowAll = false;
+    renderReports();
+  }));
+  const fromInput = document.getElementById("reportFromInput");
+  const toInput = document.getElementById("reportToInput");
+  if (fromInput) fromInput.addEventListener("change", () => { reportFrom = fromInput.value; renderReports(); });
+  if (toInput) toInput.addEventListener("change", () => { reportTo = toInput.value; renderReports(); });
+  document.getElementById("exportAttendanceRangeBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try { await exportAttendanceRange(bounds.from, bounds.to, `${bounds.label}${bounds.from || bounds.to ? " (" + rangeText + ")" : ""}`); }
+    catch (err) { alert("Export failed: " + err.message); }
+    finally { btn.disabled = false; }
+  });
+
   el.querySelectorAll("[data-rc]").forEach(b => b.addEventListener("click", () => {
     reportCommittee = b.dataset.rc;
     reportShowAll = false;
@@ -1630,6 +1710,8 @@ function renderReports() {
 
       const s1 = wb.addWorksheet("By Committee");
       s1.columns = [{ width: 24 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 8 }, { width: 10 }];
+      s1.addRow([`Period: ${bounds.label}${bounds.from || bounds.to ? " (" + rangeText + ")" : ""}`]).font = { bold: true };
+      s1.addRow([]);
       s1.addRow(["Committee", "Members", "Hours", "Avg / Member", "Late", "No Show"]).font = { bold: true };
       committees.forEach(c => s1.addRow([c.name, c.members.size, +c.hours.toFixed(1), c.members.size ? +(c.hours / c.members.size).toFixed(1) : "", c.late, c.noShow]));
       s1.addRow(["Total", "", +totalHours.toFixed(1)]).font = { bold: true };
@@ -1639,7 +1721,7 @@ function renderReports() {
       s2.addRow(["Rank", "Name", "Student No.", "Committee", "Hours"]).font = { bold: true };
       ranked.forEach((m, i) => s2.addRow([i + 1, m.name, m.studentNo, m.committee, +m.hours.toFixed(1)]));
 
-      await downloadWorkbook(wb, `LSBRCY-Hours-Report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      await downloadWorkbook(wb, `LSBRCY-Hours-Report${bounds.from || bounds.to ? "-" + (bounds.from || "start") + "_to_" + (bounds.to || "now") : ""}-${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (err) {
       alert("Export failed: " + err.message);
     } finally {
@@ -1718,7 +1800,8 @@ function makeAttendanceRow(date, v, rec, today, now) {
     name: (v && v.fullName) || (rec && rec.fullName) || "",
     studentNo: (v && v.studentNo) || (rec && rec.studentNo) || "",
     committee: (v && v.committee) || (rec && rec.committee) || "",
-    location: (v && v.location) || "",
+    location: (v && v.location) || (rec ? recordLocation(rec) : ""),
+    start,
     timeRange: start ? `${formatTime12(start)} – ${formatTime12(end)}` : "",
     timeIn: rec ? rec.timeIn : null,
     timeOut: rec ? rec.timeOut : null,
@@ -1907,3 +1990,54 @@ document.getElementById("postAnnouncementBtn").addEventListener("click", async (
     btn.disabled = false;
   }
 });
+
+// All events' attendance (reservations merged with duty records) for dates within
+// [from, to] — either end may be "" for open-ended. One "Summary" tab (per event)
+// and one "Attendance" tab (every row, sorted by date) in a single workbook.
+async function exportAttendanceRange(from, to, label) {
+  const events = allEvents.slice().sort((a, b) => (a.startDate || "").localeCompare(b.startDate || "") || (a.name || "").localeCompare(b.name || ""));
+  const all = [];
+  const summary = [];
+  for (const ev of events) {
+    const rows = attendanceRowsForEvent(ev).filter(r => (!from || r.date >= from) && (!to || r.date <= to));
+    if (!rows.length) continue;
+    summary.push({ ev, s: attendanceSummary(rows) });
+    rows.forEach(r => all.push({ ev, r }));
+  }
+  if (!all.length) { alert("No attendance found for this period."); return; }
+  all.sort((a, b) => a.r.date.localeCompare(b.r.date) || (a.r.start || "").localeCompare(b.r.start || "") || (a.ev.name || "").localeCompare(b.ev.name || "") || (a.r.name || "").localeCompare(b.r.name || ""));
+
+  const wb = new ExcelJS.Workbook();
+
+  const s1 = wb.addWorksheet("Summary");
+  s1.columns = [{ width: 38 }, { width: 14 }, { width: 10 }, { width: 8 }, { width: 10 }, { width: 9 }, { width: 14 }, { width: 10 }];
+  s1.addRow([`Attendance — ${label}`]).font = { bold: true, size: 14 };
+  s1.addRow([]);
+  const h1 = s1.addRow(["Event", "Reserved / logged", "Attended", "Late", "Early out", "No show", "Not clocked in", "Hours"]);
+  h1.font = { bold: true };
+  h1.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
+  const tot = { total: 0, attended: 0, late: 0, earlyOut: 0, noShow: 0, notClockedIn: 0, hours: 0 };
+  summary.forEach(({ ev, s }) => {
+    s1.addRow([ev.name, s.total, s.attended, s.late, s.earlyOut, s.noShow, s.notClockedIn, +s.hours.toFixed(1)]);
+    Object.keys(tot).forEach(k => { tot[k] += s[k]; });
+  });
+  s1.addRow(["Total", tot.total, tot.attended, tot.late, tot.earlyOut, tot.noShow, tot.notClockedIn, +tot.hours.toFixed(1)]).font = { bold: true };
+
+  const s2 = wb.addWorksheet("Attendance");
+  const headers = ["Date", "Event", "Name", "Student No.", "Committee", "Shift", "Location", "In", "Out", "Hrs", "Status"];
+  s2.columns = [{ width: 14 }, { width: 34 }, { width: 28 }, { width: 14 }, { width: 22 }, { width: 22 }, { width: 22 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 28 }];
+  const h2 = s2.addRow(headers);
+  h2.font = { bold: true };
+  h2.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
+  all.forEach(({ ev, r }) => s2.addRow([
+    r.date, ev.name || "", r.name, r.studentNo, r.committee, r.timeRange, r.location,
+    r.timeIn ? fmtClock(r.timeIn) : "", r.timeOut ? fmtClock(r.timeOut) : "",
+    r.hours != null ? Number(r.hours.toFixed(1)) : "",
+    [r.status.label, r.late ? "Late" : "", r.earlyOut ? "Early Out" : "", r.manual ? "Manual" : ""].filter(Boolean).join(", ")
+  ]));
+  s2.views = [{ state: "frozen", ySplit: 1 }];
+  s2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+
+  const tag = (from || to) ? `${from || "start"}_to_${to || "now"}` : "all-time";
+  await downloadWorkbook(wb, `LSBRCY-Attendance-${tag}.xlsx`);
+}
