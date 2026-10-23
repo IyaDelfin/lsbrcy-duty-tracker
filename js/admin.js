@@ -47,7 +47,11 @@ let editingDateOverrides = {}; // { "YYYY-MM-DD": [{start, end, location}, ...] 
 let expandedRecordId = null;    // duty record row expanded to show full details in Member Detail
 let editingRecordId = null;     // duty record row currently being edited in Member Detail
 let expandedCategoryDate = null; // date card expanded in the admin's read-only Overview event view
-let lastRenderedMemberId = null; // which member the Member Detail panel was last drawn for (used to keep the "Add Duty Record" form from being wiped by live updates)
+
+
+
+
+
 
 
 document.getElementById("evStatusTabs").addEventListener("click", (e) => {
@@ -79,7 +83,7 @@ const CATEGORY_LABELS = { clinic: "Clinic Duty", office: "Office Duty" };
 
 function initDashboard() {
   initAnnouncements();
-  onSnapshot(collection(db, "events"), (snap) => {
+    onSnapshot(collection(db, "events"), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEvents();
     renderEventSubTabs();
@@ -94,7 +98,7 @@ function initDashboard() {
     renderReports();
   });
 
-  onSnapshot(query(collection(db, "dutyRecords"), orderBy("createdAt", "desc")), (snap) => {
+    onSnapshot(query(collection(db, "dutyRecords"), orderBy("createdAt", "desc")), (snap) => {
     allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderEventSubTabs();
     renderRecords();
@@ -103,12 +107,14 @@ function initDashboard() {
     renderReports();
     if (attendanceOpenFor) renderEvents();
   });
+
+
 }
 
 function updateStats() {
   document.getElementById("statMembers").textContent = allMembers.filter(m => m.role === "member").length;
   document.getElementById("statEvents").textContent = allEvents.length;
-  document.getElementById("statRecords").textContent = allRecords.length;
+   document.getElementById("statRecords").textContent = allRecords.length;
 }
 
 // Total reservations across all dates of an event (same count the member view shows).
@@ -235,12 +241,13 @@ function renderCategoryEvents() {
     || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
   wireWeekToggles(listEl, renderCategoryEvents);
 
-  listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
+    listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
     viewedCategoryEventId = card.dataset.viewEv;
     expandedCategoryDate = null;
     renderCategoryEvents();
     renderCategoryEventDetails();
   }));
+
 
   renderCategoryEventDetails();
 }
@@ -252,13 +259,13 @@ function renderCategoryEventDetails() {
   if (!ev) { el.innerHTML = ""; return; }
 
   const volunteersByDate = ev.volunteersByDate || {};
-  const dates = eventDates(ev);
+const dates = eventDates(ev);
   const datesHtml = dates.map(date => {
     const list = volunteersByDate[date] || [];
     const hasTimeRange = timeWindowsForEvent(ev, date).length > 0;
     const isExpanded = expandedCategoryDate === date;
     const dateLabel = new Date(date + "T00:00:00").toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-    const namesHtml = renderHourSlotTable(ev, list, date);
+  const namesHtml = renderHourSlotTable(ev, list, date);
 
     return `
       <div class="card" style="margin-bottom:8px;${isExpanded ? 'border-color:var(--orange);' : ''}">
@@ -300,7 +307,11 @@ function renderCategoryEventDetails() {
     catch (err) { alert("Export failed: " + err.message); }
     finally { btn.disabled = false; }
   });
+
 }
+
+
+
 
 
 // ---------- EVENTS ----------
@@ -329,7 +340,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   const manualOnly = document.getElementById("evManualOnly").checked;
   if (!name) return;
 
-  const overrideDatesSorted = Object.keys(dateOverrides).sort();
+   const overrideDatesSorted = Object.keys(dateOverrides).sort();
   const overridesOnlyChecked = document.getElementById("evOverridesOnly").checked;
   if (overridesOnlyChecked && !overrideDatesSorted.length) {
     alert('Add at least one date override (with a start and end time) first, or untick "Only use the dates listed above".');
@@ -343,6 +354,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
     timeWindows, dateOverrides, overridesOnly, pic, compliance, manualOnly
   };
 
+  
   if (editingEventId) {
     await updateDoc(doc(db, "events", editingEventId), payload);
     editingEventId = null;
@@ -358,7 +370,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
   }
 
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
   document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
@@ -371,7 +383,7 @@ document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
   document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
@@ -385,7 +397,7 @@ document.getElementById("cancelEditEventBtn").addEventListener("click", () => {
   document.getElementById("addEventBtn").textContent = "+ Add Event";
   document.getElementById("cancelEditEventBtn").style.display = "none";
   ["evName","evLocation","evMaxHours","evMaxVolunteers","evMaxPerMember","evStartDate","evEndDate","evPic","evCompliance"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("evManualOnly").checked = false;
+document.getElementById("evManualOnly").checked = false;
   document.getElementById("evOverridesOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
@@ -410,8 +422,10 @@ function startEditEvent(ev) {
   editingDateOverrides = ev.dateOverrides ? JSON.parse(JSON.stringify(ev.dateOverrides)) : {};
   renderDateOverrides();
   document.getElementById("evPic").value = ev.pic || "";
+
+  document.getElementById("evPic").value = ev.pic || "";
   document.getElementById("evCompliance").value = ev.compliance || "";
-  document.getElementById("evManualOnly").checked = !!ev.manualOnly;
+document.getElementById("evManualOnly").checked = !!ev.manualOnly;
   document.getElementById("evOverridesOnly").checked = !!ev.overridesOnly;
   document.getElementById("addEventBtn").textContent = "Save Changes";
   document.getElementById("cancelEditEventBtn").style.display = "inline-block";
@@ -568,7 +582,6 @@ function timeWindowsForEvent(ev, date) {
   }
   return windows.map(w => ({ start: w.start, end: w.end, location: (w.location && w.location.trim()) || ev.location || "", pic: (w.pic || "").trim() }));
 }
-
 // 30-minute-increment time options within a single {start,end} window.
 function timeOptionsForWindow(win) {
   const times = [];
@@ -593,7 +606,6 @@ function hourSlotsForEvent(ev, date) {
   }
   return slots;
 }
-
 // Renders a date's volunteer list as a stack of blue/red hour slot cards —
 // same as the member-facing view, read-only (no reserve/cancel controls).
 // Merges a clock hour's two 30-min slots into one row when they'd show
@@ -639,7 +651,7 @@ function renderHourSlotTable(ev, list, date) {
         return `
           <div style="background:rgba(${accent},.06);border:1px solid rgba(${accent},.25);border-left:3px solid rgba(${accent},.8);border-radius:8px;padding:8px 12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
+<span style="font-size:.82rem;font-weight:600;color:var(--text);">${row.location ? `<span style="background:rgba(217,51,46,.15);color:var(--red);padding:2px 8px;border-radius:6px;margin-right:8px;font-weight:700;">${escapeHtml(row.location)}</span>` : ''}${formatTime12(row.start)} – ${formatTime12(row.end)}${row.pic ? `<span style="margin-left:10px;font-weight:500;color:var(--muted);">PIC: ${escapeHtml(row.pic)}</span>` : ''}</span>
               <span style="font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;${isFull ? 'background:var(--red);color:#fff;' : 'background:rgba(255,255,255,.06);color:var(--muted);'}">${isFull ? '⚠ Full' : capLabel}</span>
             </div>
             ${row.occupants.length ? `
@@ -762,7 +774,8 @@ function renderEvents() {
     || `<p class="muted">No events match this filter.</p>`;
   wireWeekToggles(el, renderEvents);
 
-  el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
+
+    el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
     const newStatus = btn.dataset.status === "active" ? "completed" : "active";
     await updateDoc(doc(db, "events", btn.dataset.id), { status: newStatus });
   }));
@@ -790,6 +803,9 @@ function renderEvents() {
     finally { btn.disabled = false; }
   });
 }
+
+
+
 
 
 // ---------- MEMBERS ----------
@@ -854,7 +870,7 @@ function renderMembers() {
     renderMembers();
   }));
 
-  let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
+    let filtered = activeMemberCommittee === "all" ? allMembers : allMembers.filter(m => m.committee === activeMemberCommittee);
   if (memberSearchTerm) {
     filtered = filtered.filter(m =>
       (m.fullName || m.username || "").toLowerCase().includes(memberSearchTerm) ||
@@ -864,6 +880,7 @@ function renderMembers() {
   filtered = [...filtered].sort((a, b) =>
     (a.fullName || a.username || "").localeCompare(b.fullName || b.username || "")
   );
+
 
   const el = document.getElementById("membersList");
   el.innerHTML = `
@@ -903,32 +920,22 @@ function renderMembers() {
 
 function renderMemberDetail() {
   const el = document.getElementById("memberDetail");
-  if (!selectedMemberId) { el.innerHTML = ""; lastRenderedMemberId = null; return; }
+  if (!selectedMemberId) { el.innerHTML = ""; return; }
   const m = allMembers.find(x => x.id === selectedMemberId);
-  if (!m) { el.innerHTML = ""; lastRenderedMemberId = null; return; }
-
-  // Live snapshots (users / dutyRecords) re-render this whole panel. Remember what's
-  // typed into the "Add Duty Record" form so it isn't wiped mid-entry. Only restored
-  // when the same member is still open — switching members starts with a blank form.
-  const manualFieldIds = ["manualRecordEvent", "manualRecordDate", "manualRecordTimeIn", "manualRecordHours", "manualRecordAddedBy", "manualRecordNote"];
-  const manualCheckIds = ["manualRecordLate", "manualRecordNoShow"];
-  const savedFields = {};
-  const savedChecks = {};
-  if (lastRenderedMemberId === selectedMemberId) {
-    manualFieldIds.forEach(id => { const f = document.getElementById(id); if (f) savedFields[id] = f.value; });
-    manualCheckIds.forEach(id => { const f = document.getElementById(id); if (f) savedChecks[id] = f.checked; });
-  }
+  if (!m) { el.innerHTML = ""; return; }
 
   const records = allRecords.filter(r => r.uid === selectedMemberId);
   const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
   const eventOptionsHtml = allEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)}</option>`).join("");
 
+  
   el.innerHTML = `
     <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:5px; position: relative;">
       <button class="secondary" id="closeMemberDetail" style="position: absolute; top: 16px; right: 16px; width: auto;">Close</button>
       <p class="eyebrow">Member Details</p>
       <h3 style="margin:0;">${escapeHtml(m.fullName || m.username || "")}</h3>
+    </div>
       <p class="muted">Username: <strong style="color:var(--text);">${escapeHtml(m.username || "–")}</strong></p>
       <p class="muted">Password: <strong style="color:var(--text);">${escapeHtml(m.initialPassword || "–")}</strong></p>
       <p class="muted">ID: ${escapeHtml(m.studentNo || "–")} · Committee: ${escapeHtml(m.committee || "–")} · Role: ${escapeHtml(m.role || "")}</p>
@@ -983,6 +990,7 @@ function renderMemberDetail() {
                   <p class="muted" style="margin:0 0 4px;">Note: ${r.note ? escapeHtml(r.note) : '<em>No note</em>'}</p>
                   <p class="muted" style="margin:0;">Logged: ${r.createdAt ? new Date(r.createdAt).toLocaleString() : '–'}</p>
                 </div>
+
               `}
             </td>
           </tr>` : ''}`;
@@ -998,8 +1006,8 @@ function renderMemberDetail() {
         <input id="manualRecordDate" type="date">
         <input id="manualRecordTimeIn" type="time" placeholder="Time in">
       </div>
-      <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
-      <input id="manualRecordAddedBy" type="text" placeholder="Added/verified by (your name)">
+        <input id="manualRecordHours" type="number" min="0" step="0.5" placeholder="Hours rendered (e.g. 4)">
+        <input id="manualRecordAddedBy" type="text" placeholder="Added/verified by (your name)">
       <textarea id="manualRecordNote" placeholder="Note (optional, e.g. Noted by...)" style="position:static;float:none;display:block;box-sizing:border-box;width:100%;min-height:50px;margin-bottom:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.9rem;resize:vertical;"></textarea>
 
       <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
@@ -1010,11 +1018,6 @@ function renderMemberDetail() {
       </label>
       <button class="primary" id="addManualRecordBtn" style="width:100%;">+ Add Record</button>
     </div>`;
-
-  // Put back whatever was typed in the Add Duty Record form before the re-render.
-  manualFieldIds.forEach(id => { const f = document.getElementById(id); if (f && savedFields[id] != null) f.value = savedFields[id]; });
-  manualCheckIds.forEach(id => { const f = document.getElementById(id); if (f && savedChecks[id] != null) f.checked = savedChecks[id]; });
-  lastRenderedMemberId = selectedMemberId;
 
   document.getElementById("closeMemberDetail").addEventListener("click", () => {
     selectedMemberId = null;
@@ -1069,93 +1072,101 @@ function renderMemberDetail() {
     renderMemberDetail();
   }));
 
+
   const noShowBox = document.getElementById("manualRecordNoShow");
-  const syncNoShowFields = () => {
+  if (noShowBox) noShowBox.addEventListener("change", () => {
     ["manualRecordHours", "manualRecordTimeIn", "manualRecordLate"].forEach(id => {
       const f = document.getElementById(id);
       if (f) { f.disabled = noShowBox.checked; if (noShowBox.checked && f.type === "checkbox") f.checked = false; }
     });
-  };
-  if (noShowBox) {
-    noShowBox.addEventListener("change", syncNoShowFields);
-    syncNoShowFields(); // keep the disabled state correct after a re-render restores the checkbox
-  }
+  });
 
   const addManualBtn = document.getElementById("addManualRecordBtn");
   if (addManualBtn) {
     addManualBtn.addEventListener("click", async () => {
-      const original = addManualBtn.textContent;
-      addManualBtn.disabled = true;
-      addManualBtn.textContent = "Adding...";
-      try {
-        const eventId = document.getElementById("manualRecordEvent").value;
-        const ev = allEvents.find(e => e.id === eventId);
-        const date = document.getElementById("manualRecordDate").value;
-        const timeInStr = document.getElementById("manualRecordTimeIn").value || "08:00";
-        const hoursRaw = document.getElementById("manualRecordHours").value.trim();
-        const addedBy = document.getElementById("manualRecordAddedBy").value.trim();
-        const note = document.getElementById("manualRecordNote").value.trim();
-        const late = document.getElementById("manualRecordLate").checked;
-        const noShow = document.getElementById("manualRecordNoShow").checked;
+      const eventId = document.getElementById("manualRecordEvent").value;
+      const ev = allEvents.find(e => e.id === eventId);
+      const date = document.getElementById("manualRecordDate").value;
+      const timeInStr = document.getElementById("manualRecordTimeIn").value || "08:00";
+      const hoursRaw = document.getElementById("manualRecordHours").value.trim();
+      const addedBy = document.getElementById("manualRecordAddedBy").value.trim();
+      const note = document.getElementById("manualRecordNote").value.trim();
+      const late = document.getElementById("manualRecordLate").checked;
+      const noShow = document.getElementById("manualRecordNoShow").checked;
 
+      if (noShow) {
         if (!ev || !date) { alert("Please select an event and a date."); return; }
-
-        const base = {
+        // If the member still holds a reservation that day, use its shift and free the slot.
+        const entry = ((ev.volunteersByDate || {})[date] || []).find(v => v.uid === m.id);
+        await addDoc(collection(db, "dutyRecords"), {
           uid: m.id,
           studentNo: m.studentNo || "",
           fullName: m.fullName || m.username || "",
           committee: m.committee || "",
           eventId: ev.id,
           eventName: ev.name,
-          date, addedBy, note,
+          shift: null,
+          shiftStart: (entry && entry.startTime) || null,
+          shiftEnd: (entry && entry.endTime) || null,
+          date,
+          timeIn: null,
+          timeOut: null,
+          hours: 0,
+          addedBy,
+          note,
           pic: ev.pic || "",
           verified: true,
+          late: false,
+          earlyOut: false,
+          noShow: true,
           addedByAdmin: true,
           createdAt: Date.now()
-        };
-
-        if (noShow) {
-          // If the member still holds a reservation that day, use its shift and free the slot.
-          const entry = ((ev.volunteersByDate || {})[date] || []).find(v => v.uid === m.id);
-          await addDoc(collection(db, "dutyRecords"), {
-            ...base,
-            shift: null,
-            shiftStart: (entry && entry.startTime) || null,
-            shiftEnd: (entry && entry.endTime) || null,
-            timeIn: null, timeOut: null, hours: 0,
-            late: false, earlyOut: false, noShow: true
-          });
-          if (entry) await updateDoc(doc(db, "events", ev.id), { [`volunteersByDate.${date}`]: arrayRemove(entry) });
-        } else {
-          const hours = parseFloat(hoursRaw);
-          if (hoursRaw === "" || isNaN(hours)) { alert("Please enter the hours rendered."); return; }
-          const timeIn = new Date(`${date}T${timeInStr}:00`).getTime();
-          await addDoc(collection(db, "dutyRecords"), {
-            ...base,
-            shift: new Date(timeIn).getHours() < 12 ? "AM" : "PM",
-            shiftStart: null, shiftEnd: null,
-            timeIn, timeOut: timeIn + hours * 3600000, hours,
-            late, earlyOut: false, noShow: false
-          });
-        }
-
-        // Clear the form after a successful add.
-        ["manualRecordDate", "manualRecordTimeIn", "manualRecordHours", "manualRecordAddedBy", "manualRecordNote"]
-          .forEach(id => { const f = document.getElementById(id); if (f) f.value = ""; });
-        const lateBox = document.getElementById("manualRecordLate");
-        if (lateBox) lateBox.checked = false;
-      } catch (err) {
-        console.error("Add record failed:", err);
-        alert("Couldn't add record: " + (err.code || err.message));
-      } finally {
-        // The panel may have been re-rendered by a live snapshot, so look the button up again.
-        const btnNow = document.getElementById("addManualRecordBtn");
-        if (btnNow) { btnNow.disabled = false; btnNow.textContent = original; }
+        });
+        if (entry) await updateDoc(doc(db, "events", ev.id), { [`volunteersByDate.${date}`]: arrayRemove(entry) });
+        ["manualRecordDate", "manualRecordAddedBy", "manualRecordNote"].forEach(id => { document.getElementById(id).value = ""; });
+        return;
       }
+
+      if (!ev || !date || hoursRaw === "") {
+        alert("Please select an event, a date, and enter hours rendered.");
+        return;
+      }
+      const hours = parseFloat(hoursRaw);
+      const timeIn = new Date(`${date}T${timeInStr}:00`).getTime();
+      const timeOut = timeIn + hours * 3600000;
+
+      await addDoc(collection(db, "dutyRecords"), {
+        uid: m.id,
+        studentNo: m.studentNo || "",
+        fullName: m.fullName || m.username || "",
+        committee: m.committee || "",
+        eventId: ev.id,
+        eventName: ev.name,
+        shift: new Date(timeIn).getHours() < 12 ? "AM" : "PM",
+        shiftStart: null,
+        shiftEnd: null,
+        date,        
+        timeIn,
+        timeOut,
+        hours,
+        addedBy,
+        note,
+        pic: ev.pic || "",
+        verified: true,
+        late,
+        addedByAdmin: true,
+        createdAt: Date.now()
+      });
+
+      document.getElementById("manualRecordDate").value = "";
+      document.getElementById("manualRecordTimeIn").value = "";
+      document.getElementById("manualRecordHours").value = "";
+      document.getElementById("manualRecordAddedBy").value = "";
+      document.getElementById("manualRecordNote").value = "";
+      document.getElementById("manualRecordLate").checked = false;
     });
   }
 }
-
 // ---------- DUTY RECORDS (tabbed by event, filterable by committee) ----------
 function renderEventSubTabs() {
   const el = document.getElementById("eventSubTabs");
@@ -1171,7 +1182,6 @@ function renderEventSubTabs() {
     renderRecords();
   }));
 }
-
 // Applies the same event/committee tab filters the Records tab is currently
 // showing. Shared by renderRecords() and the Excel export so the export
 // always matches exactly what's on screen.
@@ -1311,6 +1321,7 @@ async function exportRecordsToExcel(records) {
     const sheet = workbook.addWorksheet(uniqueSheetName(workbook, sanitizeSheetName(committee)));
     sheet.columns = columnDefs.map(c => ({ width: c.width }));
 
+
     const byEvent = new Map();
     for (const r of byCommittee.get(committee)) {
       const key = r.eventId || r.eventName || "Unknown Event";
@@ -1350,7 +1361,7 @@ async function exportRecordsToExcel(records) {
     }
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
+   const buffer = await workbook.xlsx.writeBuffer();
   // The real Excel mime type, not generic octet-stream — Safari needs this
   // to show a proper "Download"/"Save to Files" prompt instead of a blank page.
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
