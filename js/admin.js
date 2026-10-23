@@ -2,7 +2,7 @@ import { auth, db, getSecondaryAuth, usernameToEmail } from "./firebase-init.js"
 import { onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   doc, getDoc, setDoc, deleteDoc, updateDoc,
-  collection, addDoc, onSnapshot, query, orderBy
+  collection, addDoc, onSnapshot, query, orderBy, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ---------- AUTH GUARD ----------
@@ -965,6 +965,10 @@ function renderMemberDetail() {
                   <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0 0 10px;">
                     <input type="checkbox" data-edit-late="${r.id}" ${r.late ? 'checked' : ''} style="width:auto;margin:0;"> Mark as Late
                   </label>
+                  <label class="muted" style="display:flex;align-items:center;gap:8px;margin:0 0 4px;">
+                    <input type="checkbox" data-edit-noshow="${r.id}" ${r.noShow ? 'checked' : ''} style="width:auto;margin:0;"> Mark as No Show
+                  </label>
+                  <p class="muted" style="margin:0 0 10px;font-size:.75rem;">No Show clears the times and sets hours to 0. To turn a No Show back into a normal record, untick it and enter the time in / out.</p>
                   <button class="primary" data-action="save-record" data-id="${r.id}" style="padding:6px 14px;font-size:.8rem;width:auto;">Save</button>
                   <button class="secondary" data-action="cancel-edit-record" data-id="${r.id}" style="padding:6px 14px;font-size:.8rem;width:auto;">Cancel</button>
                 </div>
@@ -996,6 +1000,9 @@ function renderMemberDetail() {
 
       <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
         <input type="checkbox" id="manualRecordLate" style="width:auto;margin:0;"> Mark as Late
+      </label>
+      <label class="muted" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;">
+        <input type="checkbox" id="manualRecordNoShow" style="width:auto;margin:0;"> Mark as No Show <span style="font-size:.75rem;">(0 hours, frees their reservation)</span>
       </label>
       <button class="primary" id="addManualRecordBtn" style="width:100%;">+ Add Record</button>
     </div>`;
@@ -1035,16 +1042,32 @@ function renderMemberDetail() {
     const addedBy = el.querySelector(`[data-edit-addedby="${id}"]`).value.trim();
     const note = el.querySelector(`[data-edit-note="${id}"]`).value.trim();
     const late = el.querySelector(`[data-edit-late="${id}"]`).checked;
+    const noShow = el.querySelector(`[data-edit-noshow="${id}"]`).checked;
+
+    if (noShow) {
+      await updateDoc(doc(db, "dutyRecords", id), { date, timeIn: null, timeOut: null, hours: 0, addedBy, note, late: false, earlyOut: false, noShow: true });
+      editingRecordId = null;
+      renderMemberDetail();
+      return;
+    }
 
     const timeIn = date && timeInStr ? new Date(`${date}T${timeInStr}:00`).getTime() : null;
     const timeOut = date && timeOutStr ? new Date(`${date}T${timeOutStr}:00`).getTime() : null;
     const hours = (timeIn != null && timeOut != null) ? +((timeOut - timeIn) / 3600000).toFixed(2) : null;
 
-    await updateDoc(doc(db, "dutyRecords", id), { date, timeIn, timeOut, hours, addedBy, note, late });
+    await updateDoc(doc(db, "dutyRecords", id), { date, timeIn, timeOut, hours, addedBy, note, late, noShow: false });
     editingRecordId = null;
     renderMemberDetail();
   }));
 
+
+  const noShowBox = document.getElementById("manualRecordNoShow");
+  if (noShowBox) noShowBox.addEventListener("change", () => {
+    ["manualRecordHours", "manualRecordTimeIn", "manualRecordLate"].forEach(id => {
+      const f = document.getElementById(id);
+      if (f) { f.disabled = noShowBox.checked; if (noShowBox.checked && f.type === "checkbox") f.checked = false; }
+    });
+  });
 
   const addManualBtn = document.getElementById("addManualRecordBtn");
   if (addManualBtn) {
@@ -1057,7 +1080,40 @@ function renderMemberDetail() {
       const addedBy = document.getElementById("manualRecordAddedBy").value.trim();
       const note = document.getElementById("manualRecordNote").value.trim();
       const late = document.getElementById("manualRecordLate").checked;
+      const noShow = document.getElementById("manualRecordNoShow").checked;
 
+      if (noShow) {
+        if (!ev || !date) { alert("Please select an event and a date."); return; }
+        // If the member still holds a reservation that day, use its shift and free the slot.
+        const entry = ((ev.volunteersByDate || {})[date] || []).find(v => v.uid === m.id);
+        await addDoc(collection(db, "dutyRecords"), {
+          uid: m.id,
+          studentNo: m.studentNo || "",
+          fullName: m.fullName || m.username || "",
+          committee: m.committee || "",
+          eventId: ev.id,
+          eventName: ev.name,
+          shift: null,
+          shiftStart: (entry && entry.startTime) || null,
+          shiftEnd: (entry && entry.endTime) || null,
+          date,
+          timeIn: null,
+          timeOut: null,
+          hours: 0,
+          addedBy,
+          note,
+          pic: ev.pic || "",
+          verified: true,
+          late: false,
+          earlyOut: false,
+          noShow: true,
+          addedByAdmin: true,
+          createdAt: Date.now()
+        });
+        if (entry) await updateDoc(doc(db, "events", ev.id), { [`volunteersByDate.${date}`]: arrayRemove(entry) });
+        ["manualRecordDate", "manualRecordAddedBy", "manualRecordNote"].forEach(id => { document.getElementById(id).value = ""; });
+        return;
+      }
 
       if (!ev || !date || hoursRaw === "") {
         alert("Please select an event, a date, and enter hours rendered.");
