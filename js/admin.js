@@ -121,19 +121,113 @@ function volunteerCount(ev) {
   return Object.values(ev.volunteersByDate || {}).reduce((s, a) => s + a.length, 0);
 }
 
+// ---------- WEEKLY GROUPING (Overview list + Events tab) ----------
+// Open/closed state of each week section, keyed "scope:weekKey" (true/false).
+const weekOpenState = {};
+
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return localDateStr(d);
+}
+
+function addDaysStr(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return localDateStr(d);
+}
+
+// Groups events by the week of their next upcoming date (Mon–Sun). Events whose
+// dates have all passed go to "Earlier"; events with no dates go to "Dates to be
+// announced". Returns the section markup, with tap-to-collapse week headers.
+//   opts.openAll      – every week starts open (otherwise only this/next week)
+//   opts.openEarlier  – the "Earlier" section starts open
+//   opts.forceOpenId  – the section holding this event id is always open
+function renderWeekGroups(scope, list, cardFn, opts = {}) {
+  if (!list.length) return "";
+  const today = localDateStr();
+  const thisMon = mondayOf(today);
+  const nextMon = addDaysStr(thisMon, 7);
+  const groups = {};
+  list.forEach(ev => {
+    const dates = eventDates(ev).slice().sort();
+    let key, anchor = "";
+    if (!dates.length) key = "tba";
+    else {
+      anchor = dates.find(d => d >= today) || "";
+      if (anchor) key = mondayOf(anchor);
+      else { key = "earlier"; anchor = dates[dates.length - 1]; }
+    }
+    (groups[key] = groups[key] || []).push({ ev, anchor });
+  });
+
+  const weekKeys = Object.keys(groups).filter(k => k !== "earlier" && k !== "tba").sort();
+  const orderedKeys = [...weekKeys, ...(groups.earlier ? ["earlier"] : []), ...(groups.tba ? ["tba"] : [])];
+  const fmtMD = (d) => new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
+
+  return orderedKeys.map(key => {
+    const items = groups[key].slice().sort((a, b) => (a.anchor || "9999").localeCompare(b.anchor || "9999") || (a.ev.name || "").localeCompare(b.ev.name || ""));
+    let title, sub = "", defaultOpen;
+    if (key === "tba") { title = "Dates to be announced"; defaultOpen = true; }
+    else if (key === "earlier") { title = "Earlier"; sub = "dates already passed"; defaultOpen = !!opts.openEarlier; }
+    else {
+      title = key === thisMon ? "This week" : key === nextMon ? "Next week" : `Week of ${fmtMD(key)}`;
+      sub = `${fmtMD(key)} – ${fmtMD(addDaysStr(key, 6))}`;
+      defaultOpen = opts.openAll || key === thisMon || key === nextMon;
+    }
+    const stateKey = scope + ":" + key;
+    const forced = opts.forceOpenId && items.some(i => i.ev.id === opts.forceOpenId);
+    const open = forced ? true : (stateKey in weekOpenState ? weekOpenState[stateKey] : defaultOpen);
+    return `
+    <div class="wk-group">
+      <div data-week-toggle="${stateKey}" data-open="${open ? 1 : 0}" style="display:flex;align-items:center;gap:10px;padding:10px 4px;margin:6px 0 10px;border-bottom:1px solid var(--border);cursor:pointer;">
+        <span style="color:var(--red);font-size:.8rem;width:12px;">${open ? "▾" : "▸"}</span>
+        <strong style="font-size:.95rem;">${title}</strong>
+        <span style="color:var(--muted);font-size:.78rem;">${sub}</span>
+        <span style="margin-left:auto;background:var(--card-2);border:1px solid var(--border);color:var(--muted);font-size:.72rem;padding:1px 9px;border-radius:999px;">${items.length} event${items.length === 1 ? "" : "s"}</span>
+      </div>
+      ${open ? items.map(i => cardFn(i.ev)).join("") : ""}
+    </div>`;
+  }).join("");
+}
+
+function wireWeekToggles(container, rerender) {
+  container.querySelectorAll("[data-week-toggle]").forEach(h => h.addEventListener("click", () => {
+    weekOpenState[h.dataset.weekToggle] = h.dataset.open !== "1";
+    rerender();
+  }));
+}
+
+// Distinct locations across all of an event's dates (falls back to its basic location).
+function eventLocationList(ev) {
+  const set = [];
+  eventDates(ev).forEach(d => locationsForDate(ev, d).forEach(l => { if (l && !set.includes(l)) set.push(l); }));
+  if (!set.length && ev.location) set.push(ev.location);
+  return set;
+}
+
 function renderCategoryEvents() {
   const listEl = document.getElementById("categoryEventsList");
   if (!listEl) return;
   const active = allEvents.filter(e => e.status === "active" && (e.category || "clinic") === activeCategory);
 
-    listEl.innerHTML = active.map(ev => `
-    <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}">
+  const overviewCard = (ev) => `
+    <div class="event-list-item${viewedCategoryEventId === ev.id ? ' selected' : ''}" data-view-ev="${ev.id}" style="margin-bottom:8px;">
       <h3 style="margin-bottom:2px;">${escapeHtml(ev.name)}</h3>
-      <div style="margin:2px 0 0;font-size:.78rem;color:var(--muted);">${formatEventDatesWithLocation(ev)}</div>
-      <p class="muted" style="margin:2px 0 0;font-size:.78rem;">${volunteerCount(ev)} volunteer${volunteerCount(ev) === 1 ? "" : "s"}</p>
+      <div style="margin:4px 0 0;font-size:.82rem;font-weight:600;">${escapeHtml(formatEventDateRange(ev))}</div>
+      ${(() => {
+        const locs = eventLocationList(ev);
+        const shown = locs.slice(0, 3).map(l => `<span style="display:inline-block;background:rgba(217,51,46,.15);color:var(--red);padding:1px 8px;border-radius:6px;font-size:.75rem;font-weight:700;margin-right:6px;">📍 ${escapeHtml(l)}</span>`).join("");
+        const more = locs.length > 3 ? `<span style="color:var(--muted);font-size:.75rem;">+${locs.length - 3} more</span>` : "";
+        return (shown || more) ? `<div style="margin:6px 0 0;line-height:1.9;">${shown}${more}</div>` : "";
+      })()}
+      <p class="muted" style="margin:4px 0 0;font-size:.78rem;">${volunteerCount(ev)} volunteer${volunteerCount(ev) === 1 ? "" : "s"}</p>
       ${viewedCategoryEventId === ev.id ? `<span class="badge red">Selected</span>` : ""}
-    </div>`).join("") || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+    </div>`;
 
+  listEl.innerHTML = renderWeekGroups("ov", active, overviewCard, { forceOpenId: viewedCategoryEventId })
+    || `<p class="muted">No active events under ${CATEGORY_LABELS_2[activeCategory]} right now.</p>`;
+  wireWeekToggles(listEl, renderCategoryEvents);
 
     listEl.querySelectorAll('[data-view-ev]').forEach(card => card.addEventListener("click", () => {
     viewedCategoryEventId = card.dataset.viewEv;
@@ -627,7 +721,7 @@ function renderEvents() {
         </div>`;
   const btnStyle = "width:auto;margin:0;padding:7px 14px;font-size:.82rem;";
 
-  el.innerHTML = visible.map(ev => {
+  const cardHtml = (ev) => {
     const isOpen = attendanceOpenFor === ev.id;
     const datesHtml = formatEventDatesWithLocation(ev);
     const windowsText = formatTimeWindows(ev);
@@ -662,7 +756,11 @@ function renderEvents() {
       ${ev.compliance ? `<div style="margin-top:14px;padding:8px 12px;border-radius:8px;background:rgba(217,51,46,.1);border-left:3px solid var(--red);color:var(--red);font-size:.85rem;font-weight:600;">${escapeHtml(ev.compliance)}</div>` : ""}
       ${isOpen ? renderAttendanceSection(ev) : ""}
     </div>`;
-  }).join("") || `<p class="muted">No events match this filter.</p>`;
+  };
+
+  el.innerHTML = renderWeekGroups("ev", visible, cardHtml, { openAll: true, openEarlier: evStatusFilter === "completed", forceOpenId: attendanceOpenFor })
+    || `<p class="muted">No events match this filter.</p>`;
+  wireWeekToggles(el, renderEvents);
 
 
     el.querySelectorAll('[data-action="toggle"]').forEach(btn => btn.addEventListener("click", async () => {
