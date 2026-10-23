@@ -42,6 +42,7 @@ function initData() {
     allRecords = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => b.createdAt - a.createdAt);
+    renderEventSubTabs();
     renderRecords();
     renderEvents();
   });
@@ -49,7 +50,11 @@ function initData() {
 
 function renderEventSubTabs() {
   const el = document.getElementById("eventSubTabs");
-  const tabs = [{ id: "all", name: "All" }, ...allEvents.map(e => ({ id: e.id, name: e.name }))];
+  // Only events that have at least one duty record get a tab.
+  const withRecords = new Set(allRecords.map(r => r.eventId));
+  const tabs = [{ id: "all", name: "All" }, ...allEvents.filter(e => withRecords.has(e.id)).map(e => ({ id: e.id, name: e.name }))];
+  // If the selected event no longer has records, fall back to "All".
+  if (!tabs.some(t => t.id === activeEventFilter)) activeEventFilter = "all";
   el.innerHTML = tabs.map(t => `<button data-ev="${t.id}" class="${activeEventFilter === t.id ? 'active' : ''}">${escapeHtml(t.name)}</button>`).join("");
   el.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
     activeEventFilter = btn.dataset.ev;
