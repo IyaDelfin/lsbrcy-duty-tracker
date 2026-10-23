@@ -1081,9 +1081,44 @@ function renderMemberDetail() {
     });
   });
 
+  // keep the Add Duty Record form's values across live re-renders
+  if (manualDraft.memberId !== m.id) manualDraft = { memberId: m.id };
+  [["event", "manualRecordEvent"], ["date", "manualRecordDate"], ["timeIn", "manualRecordTimeIn"],
+   ["hours", "manualRecordHours"], ["addedBy", "manualRecordAddedBy"], ["note", "manualRecordNote"]].forEach(([k, id]) => {
+    const f = document.getElementById(id);
+    if (!f) return;
+    if (manualDraft[k] != null) f.value = manualDraft[k];
+    const save = () => { manualDraft[k] = f.value; };
+    f.addEventListener("input", save);
+    f.addEventListener("change", save);
+  });
+  [["late", "manualRecordLate"], ["noShow", "manualRecordNoShow"]].forEach(([k, id]) => {
+    const f = document.getElementById(id);
+    if (!f) return;
+    if (manualDraft[k]) f.checked = true;
+    f.addEventListener("change", () => { manualDraft[k] = f.checked; });
+  });
+  if (noShowBox && manualDraft.noShow) noShowBox.dispatchEvent(new Event("change"));
+
   const addManualBtn = document.getElementById("addManualRecordBtn");
   if (addManualBtn) {
     addManualBtn.addEventListener("click", async () => {
+      const label = addManualBtn.textContent;
+      addManualBtn.disabled = true;
+      addManualBtn.textContent = "Saving…";
+      try {
+        const ok = await addManualRecord();
+        if (ok) { manualDraft = { memberId: m.id }; showToast("✓ Record added"); }
+      } catch (err) {
+        console.error("Add record failed:", err);
+        alert("Could not add the record: " + (err.code || err.message || err) + (String(err.code || "").includes("permission") ? "\n\nYour Firestore rules are blocking admins from writing duty records — re-publish the rules and make sure this account's role is 'admin'." : ""));
+      } finally {
+        addManualBtn.disabled = false;
+        addManualBtn.textContent = label;
+      }
+    });
+
+    async function addManualRecord() {
       const eventId = document.getElementById("manualRecordEvent").value;
       const ev = allEvents.find(e => e.id === eventId);
       const date = document.getElementById("manualRecordDate").value;
@@ -1095,7 +1130,7 @@ function renderMemberDetail() {
       const noShow = document.getElementById("manualRecordNoShow").checked;
 
       if (noShow) {
-        if (!ev || !date) { alert("Please select an event and a date."); return; }
+        if (!ev || !date) { alert("Please select an event and a date."); return false; }
         // If the member still holds a reservation that day, use its shift and free the slot.
         const entry = ((ev.volunteersByDate || {})[date] || []).find(v => v.uid === m.id);
         await addDoc(collection(db, "dutyRecords"), {
@@ -1124,14 +1159,15 @@ function renderMemberDetail() {
         });
         if (entry) await updateDoc(doc(db, "events", ev.id), { [`volunteersByDate.${date}`]: arrayRemove(entry) });
         ["manualRecordDate", "manualRecordAddedBy", "manualRecordNote"].forEach(id => { document.getElementById(id).value = ""; });
-        return;
+        return true;
       }
 
       if (!ev || !date || hoursRaw === "") {
         alert("Please select an event, a date, and enter hours rendered.");
-        return;
+        return false;
       }
       const hours = parseFloat(hoursRaw);
+      if (!isFinite(hours) || hours < 0) { alert("Hours rendered must be a number (0 or more)."); return false; }
       const timeIn = new Date(`${date}T${timeInStr}:00`).getTime();
       const timeOut = timeIn + hours * 3600000;
 
@@ -1164,8 +1200,22 @@ function renderMemberDetail() {
       document.getElementById("manualRecordAddedBy").value = "";
       document.getElementById("manualRecordNote").value = "";
       document.getElementById("manualRecordLate").checked = false;
-    });
+      return true;
+    }
   }
+}
+
+// ---- small helpers for the member-detail "Add Duty Record" form ----
+// The member panel re-renders whenever live data changes (someone clocks in, etc.),
+// which used to wipe whatever was typed. The draft below survives those re-renders.
+let manualDraft = {};
+
+function showToast(msg) {
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--green);color:#06170f;padding:10px 18px;border-radius:999px;font-weight:700;font-size:.9rem;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.4);";
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
 }
 // ---------- DUTY RECORDS (tabbed by event, filterable by committee) ----------
 function renderEventSubTabs() {
