@@ -792,6 +792,36 @@ function renderEvents() {
     attendanceOpenFor = attendanceOpenFor === btn.dataset.id ? null : btn.dataset.id;
     renderEvents();
   }));
+  const openEv = allEvents.find(x => x.id === attendanceOpenFor);
+  el.querySelectorAll("[data-noshow-uid]").forEach(btn => btn.addEventListener("click", async () => {
+    if (!openEv) return;
+    const date = btn.dataset.noshowDate, uid = btn.dataset.noshowUid;
+    const entry = ((openEv.volunteersByDate || {})[date] || []).find(v => v.uid === uid);
+    if (!entry) { alert("That reservation no longer exists."); return; }
+    if (!confirm(`Mark ${entry.fullName || "this member"} as No Show for ${openEv.name} on ${date}?\n\nThis records a No Show (0 hours) and frees their reservation.`)) return;
+    btn.disabled = true;
+    try { await markReservationNoShow(openEv, date, entry); }
+    catch (err) { alert("Could not mark No Show: " + (err.code || err.message)); btn.disabled = false; }
+  }));
+  const markAllBtn = document.getElementById("markAllNoShowBtn");
+  if (markAllBtn && openEv) markAllBtn.addEventListener("click", async () => {
+    const targets = attendanceRowsForEvent(openEv).filter(r => r.status.label === "Not clocked in");
+    if (!targets.length) return;
+    if (!confirm(`Mark ${targets.length} member${targets.length === 1 ? "" : "s"} as No Show for ${openEv.name}?\n\nEach gets a No Show record (0 hours) and their reservation is freed.`)) return;
+    markAllBtn.disabled = true;
+    let done = 0;
+    try {
+      for (const r of targets) {
+        const entry = ((openEv.volunteersByDate || {})[r.date] || []).find(v => v.uid === r.uid);
+        if (entry && await markReservationNoShow(openEv, r.date, entry)) done++;
+      }
+      showToast(`✓ ${done} marked as No Show`);
+    } catch (err) {
+      alert(`Stopped after ${done}: ` + (err.code || err.message));
+      markAllBtn.disabled = false;
+    }
+  });
+
   const exportAttendanceBtn = document.getElementById("exportAttendanceBtn");
   if (exportAttendanceBtn) exportAttendanceBtn.addEventListener("click", async (e) => {
     const btn = e.currentTarget;
@@ -956,7 +986,7 @@ function renderMemberDetail() {
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : (r.date || "–")}</td>
             <td>${escapeHtml(r.shift || "")}${r.shiftStart ? ` (${formatTime12(r.shiftStart)}–${formatTime12(r.shiftEnd)})` : ""}</td>
             <td>${r.timeIn ? new Date(r.timeIn).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "–"}</td>
-            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "<span class='badge blue'>Active</span>"}</td>
+            <td>${r.timeOut ? new Date(r.timeOut).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : (r.noShow ? "–" : "<span class='badge blue'>Active</span>")}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
             <td>${r.noShow ? "<span class='badge red'>No Show</span>" : ""}${r.late ? " <span class='badge orange'>Late</span>" : ""}${r.earlyOut ? " <span class='badge blue'>Early Out</span>" : ""}${r.note ? " <span class='badge blue'>Note</span>" : ""}</td>
             <td><button class="secondary" data-action="edit-record" data-id="${r.id}" style="padding:6px 10px;font-size:.75rem;">Edit</button></td>
@@ -1847,6 +1877,7 @@ function makeAttendanceRow(date, v, rec, today, now) {
   const end = (rec && rec.shiftEnd) || (v && v.endTime) || "";
   return {
     date,
+    uid: (v && v.uid) || (rec && rec.uid) || "",
     name: (v && v.fullName) || (rec && rec.fullName) || "",
     studentNo: (v && v.studentNo) || (rec && rec.studentNo) || "",
     committee: (v && v.committee) || (rec && rec.committee) || "",
@@ -1900,7 +1931,7 @@ function renderAttendanceSection(ev) {
             <td>${fmtClock(r.timeIn)}</td>
             <td>${fmtClock(r.timeOut)}</td>
             <td>${r.hours != null ? r.hours.toFixed(1) : "–"}</td>
-            <td><span class="badge ${r.status.cls}">${r.status.label}</span>${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.manual ? ` <span class="badge blue">Manual</span>` : ""}</td>
+            <td><span class="badge ${r.status.cls}">${r.status.label}</span>${r.late ? ` <span class="badge orange">Late</span>` : ""}${r.earlyOut ? ` <span class="badge blue">Early Out</span>` : ""}${r.manual ? ` <span class="badge blue">Manual</span>` : ""}${r.status.label === "Not clocked in" ? ` <button class="danger" data-noshow-uid="${escapeHtml(r.uid)}" data-noshow-date="${r.date}" style="width:auto;margin:0 0 0 6px;padding:2px 9px;font-size:.68rem;">Mark No Show</button>` : ""}</td>
           </tr>`).join("")}
       </table>`;
   }).join("");
@@ -1909,7 +1940,10 @@ function renderAttendanceSection(ev) {
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
       <div class="row" style="align-items:center;">
         <h3 style="margin:0;">Attendance</h3>
-        <button class="secondary" id="exportAttendanceBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">⬇ Export Attendance</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+          ${s.notClockedIn ? `<button class="danger" id="markAllNoShowBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">Mark ${s.notClockedIn} as No Show</button>` : ""}
+          <button class="secondary" id="exportAttendanceBtn" style="width:auto;padding:6px 14px;font-size:.8rem;">⬇ Export Attendance</button>
+        </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
         ${chip("Reserved / logged", s.total)}
@@ -2090,4 +2124,37 @@ async function exportAttendanceRange(from, to, label) {
 
   const tag = (from || to) ? `${from || "start"}_to_${to || "now"}` : "all-time";
   await downloadWorkbook(wb, `LSBRCY-Attendance-${tag}.xlsx`);
+}
+
+// Records a No Show for a member who still holds a reservation but never clocked in
+// (the same record the member's own app creates, but done from the admin side, for
+// members who never opened the app after their shift). Also frees the reserved slot.
+async function markReservationNoShow(ev, date, entry) {
+  // Don't double up if a record for this member/event/date already exists.
+  if (allRecords.some(r => r.eventId === ev.id && r.uid === entry.uid && recordDate(r) === date)) return false;
+  const m = allMembers.find(x => x.id === entry.uid) || {};
+  await addDoc(collection(db, "dutyRecords"), {
+    uid: entry.uid,
+    studentNo: entry.studentNo || m.studentNo || "",
+    fullName: entry.fullName || m.fullName || m.username || "",
+    committee: entry.committee || m.committee || "",
+    eventId: ev.id,
+    eventName: ev.name,
+    shift: null,
+    shiftStart: entry.startTime || null,
+    shiftEnd: entry.endTime || null,
+    date,
+    timeIn: null,
+    timeOut: null,
+    hours: 0,
+    pic: ev.pic || "",
+    verified: false,
+    late: false,
+    earlyOut: false,
+    noShow: true,
+    markedByAdmin: true,
+    createdAt: Date.now()
+  });
+  await updateDoc(doc(db, "events", ev.id), { [`volunteersByDate.${date}`]: arrayRemove(entry) });
+  return true;
 }
