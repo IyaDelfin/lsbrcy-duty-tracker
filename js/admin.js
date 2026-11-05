@@ -974,7 +974,6 @@ function renderMemberDetail() {
 
   const records = allRecords.filter(r => r.uid === selectedMemberId);
   const totalHours = records.reduce((sum, r) => sum + (r.hours || 0), 0);
-  const eventOptionsHtml = allEvents.map(ev => `<option value="${ev.id}">${escapeHtml(ev.name)}</option>`).join("");
 
   
   el.innerHTML = `
@@ -1049,7 +1048,15 @@ function renderMemberDetail() {
       <hr class="section-divider">
       <h3 style="margin:16px 0 8px;">+ Add Duty Record</h3>
       <p class="muted">Manually log a duty entry for this member (e.g. paper logs or make-up duty).</p>
-      <select id="manualRecordEvent">${eventOptionsHtml || `<option value="">No events yet</option>`}</select>
+      <input type="hidden" id="manualRecordEvent" value="">
+      <button type="button" id="evPickerBtn" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;background:var(--card-2);border:1px solid var(--border);color:var(--text);padding:12px 14px;border-radius:10px;font-size:1rem;font-weight:400;margin-bottom:12px;">
+        <span id="evPickerLabel" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">Select an event…</span>
+        <span style="color:var(--muted);">▾</span>
+      </button>
+      <div id="evPickerPanel" style="display:none;margin:-4px 0 12px;border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card-2);">
+        <input id="evPickerSearch" type="search" placeholder="🔍 Search events…" autocomplete="off" style="font-size:16px;margin-bottom:8px;">
+        <div id="evPickerList" style="max-height:340px;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+      </div>
       <div class="row">
         <input id="manualRecordDate" type="date">
         <input id="manualRecordTimeIn" type="time" placeholder="Time in">
@@ -1147,6 +1154,80 @@ function renderMemberDetail() {
     f.addEventListener("change", () => { manualDraft[k] = f.checked; });
   });
   if (noShowBox && manualDraft.noShow) noShowBox.dispatchEvent(new Event("change"));
+
+
+  // ---- searchable event picker (replaces the long native dropdown) ----
+  (() => {
+    const hidden = document.getElementById("manualRecordEvent");
+    const btn = document.getElementById("evPickerBtn");
+    const label = document.getElementById("evPickerLabel");
+    const panel = document.getElementById("evPickerPanel");
+    const search = document.getElementById("evPickerSearch");
+    const list = document.getElementById("evPickerList");
+    if (!hidden || !btn || !panel) return;
+    const fmt = d => new Date(d + "T00:00:00").toLocaleDateString([], { month: "short", day: "numeric" });
+    const rangeOf = ev => {
+      const ds = eventDates(ev).slice().sort();
+      if (!ds.length) return "No dates";
+      return ds.length === 1 ? fmt(ds[0]) : `${fmt(ds[0])} – ${fmt(ds[ds.length - 1])}`;
+    };
+    const anchorOf = ev => (eventDates(ev).slice().sort()[0]) || ev.startDate || "";
+    const catLabel = ev => (ev.category === "office" ? "Office Duty" : "Clinic Duty");
+
+    const syncLabel = () => {
+      const ev = allEvents.find(e => e.id === hidden.value);
+      label.textContent = ev ? ev.name : "Select an event…";
+      label.style.color = ev ? "var(--text)" : "var(--muted)";
+    };
+    const renderList = () => {
+      const q = search.value.trim().toLowerCase();
+      const items = allEvents
+        .filter(ev => !q || (ev.name || "").toLowerCase().includes(q) || catLabel(ev).toLowerCase().includes(q))
+        .map(ev => ({ ev, anchor: anchorOf(ev) }))
+        .sort((a, b) => (b.anchor || "").localeCompare(a.anchor || "") || (a.ev.name || "").localeCompare(b.ev.name || ""));
+      if (!items.length) { list.innerHTML = `<p class="muted" style="margin:8px 4px;">No events match “${escapeHtml(search.value.trim())}”.</p>`; return; }
+      const groups = [];
+      items.forEach(it => {
+        const key = it.anchor ? mondayOf(it.anchor) : "none";
+        let g = groups[groups.length - 1];
+        if (!g || g.key !== key) { g = { key, items: [] }; groups.push(g); }
+        g.items.push(it);
+      });
+      list.innerHTML = groups.map(g => {
+        const title = g.key === "none" ? "No dates" : `Week of ${fmt(g.key)} – ${fmt(addDaysStr(g.key, 6))}`;
+        return `<div style="position:sticky;top:0;background:var(--card-2);padding:6px 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;">${title}</div>` +
+          g.items.map(({ ev }) => {
+            const sel = ev.id === hidden.value;
+            return `<div data-pick-ev="${ev.id}" style="padding:10px 10px;margin-bottom:4px;border:1px solid ${sel ? "var(--red)" : "var(--border)"};background:${sel ? "rgba(217,51,46,.1)" : "transparent"};border-radius:10px;cursor:pointer;">
+              <div style="font-weight:600;overflow-wrap:anywhere;">${sel ? "✓ " : ""}${escapeHtml(ev.name)}</div>
+              <div style="color:var(--muted);font-size:.78rem;margin-top:2px;">${escapeHtml(rangeOf(ev))} · ${catLabel(ev)}${ev.status === "completed" ? " · Completed" : ""}</div>
+            </div>`;
+          }).join("");
+      }).join("");
+      list.querySelectorAll("[data-pick-ev]").forEach(row => row.addEventListener("click", () => {
+        hidden.value = row.dataset.pickEv;
+        hidden.dispatchEvent(new Event("change"));
+        const ev = allEvents.find(e => e.id === hidden.value);
+        const dateEl = document.getElementById("manualRecordDate");
+        const ds = ev ? eventDates(ev) : [];
+        if (dateEl && !dateEl.value && ds.length === 1) { dateEl.value = ds[0]; dateEl.dispatchEvent(new Event("change")); }
+        setOpen(false);
+        syncLabel();
+      }));
+    };
+    const setOpen = (open) => {
+      panel.style.display = open ? "block" : "none";
+      manualDraft.evOpen = open;
+      if (open) { renderList(); }
+    };
+    btn.addEventListener("click", () => { setOpen(panel.style.display === "none"); if (panel.style.display === "block") search.focus(); });
+    search.addEventListener("input", () => { manualDraft.evQ = search.value; renderList(); });
+
+    // restore state after a live re-render
+    if (manualDraft.evQ) search.value = manualDraft.evQ;
+    syncLabel();
+    if (manualDraft.evOpen) setOpen(true);
+  })();
 
   const addManualBtn = document.getElementById("addManualRecordBtn");
   if (addManualBtn) {
