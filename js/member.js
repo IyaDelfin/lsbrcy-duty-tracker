@@ -50,6 +50,7 @@ function initData() {
   initAnnouncements();
   onSnapshot(query(collection(db, "events")), (snap) => {
     allEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    setTimeout(checkNoShowReservations, 0);
     renderCategoryEvents();
     renderEventDetails();
     renderClockCard();
@@ -66,6 +67,7 @@ function initData() {
         .sort((a, b) => b.createdAt - a.createdAt);
       openRecord = myRecords.find(r => r.timeIn != null && r.timeOut == null && !r.noShow) || null;
       myRecordsLoaded = true;
+      setTimeout(checkNoShowReservations, 0);
       updateTotalHours();
       renderClockCard();
       renderEventSubTabs();
@@ -516,7 +518,7 @@ async function runNoShowSweep() {
   }
 }
 
-setInterval(checkNoShowReservations, 60000);
+setInterval(checkNoShowReservations, 15000);
 // Phones pause timers while the screen is off / the tab is hidden, so also
 // check the moment the page comes back to the foreground.
 document.addEventListener("visibilitychange", () => {
@@ -892,6 +894,7 @@ function renderEventDetails() {
         <div class="row" style="align-items:center;">
           <div data-toggle-date="${date}" style="cursor:pointer;">
             <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>${locPill(locationsForDate(ev, date).join(" / "))}
+            ${((ev.dateDescriptions || {})[date]) ? `<div style="margin:4px 0 2px;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere;">${escapeHtml(ev.dateDescriptions[date])}</div>` : ""}
             ${(ev.dateOverrides && ev.dateOverrides[date] && ev.dateOverrides[date].length) ? `<span class="badge orange" style="margin-left:4px;font-size:.65rem;">Custom schedule</span>` : ''}
             ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
 
@@ -1002,6 +1005,17 @@ function renderEventDetails() {
 
 
 // ---------- CLOCK IN / OUT ----------
+// True once clock-in is no longer allowed for a reserved shift: NO_SHOW_MINUTES after
+// the shift's start time (the same moment it turns into a No Show) or once the shift
+// has ended, whichever comes first.
+function clockInClosed(res, nowMs = Date.now()) {
+  if (!res || !res.startTime) return false;
+  const start = combineDateTime(res.date, res.startTime).getTime();
+  if (nowMs >= start + NO_SHOW_MINUTES * 60000) return true;
+  if (res.endTime && nowMs >= combineDateTime(res.date, res.endTime).getTime()) return true;
+  return false;
+}
+
 let clockBusy = false; // true while a clock in/out write is in flight (blocks re-renders)
 
 function renderClockCard() {
@@ -1036,21 +1050,22 @@ function renderClockCard() {
   // ---- reserved shift today ----
   const reservation = findTodaysReservation();
   if (reservation) {
-    let waiting = false, opensLine = "", note = "";
+    let waiting = false, closed = false, opensLine = "", note = "";
     if (reservation.startTime) {
       const scheduledStart = combineDateTime(reservation.date, reservation.startTime);
       const earliest = new Date(scheduledStart.getTime() - EARLY_CLOCKIN_MINUTES * 60000);
       if (now < earliest) {
         waiting = true;
         opensLine = `${earliest.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · in ${fmtCountdown(earliest - now)}`;
-      } else if (now.getTime() > scheduledStart.getTime() + NO_SHOW_MINUTES * 60000) {
-        note = `<div class="clock-note red">Past the no-show cutoff — this reservation may be cancelled automatically.</div>`;
+      } else if (clockInClosed(reservation)) {
+        closed = true;
+        note = `<div class="clock-note red">Clock-in closed. You can only clock in until ${NO_SHOW_MINUTES} minutes after your shift starts — this reservation will be recorded as a No Show.</div>`;
       } else if (now.getTime() > scheduledStart.getTime() + LATE_GRACE_MINUTES * 60000) {
         note = `<div class="clock-note orange">Clocking in now will be marked late.</div>`;
       }
     }
     box.innerHTML = `
-      <div class="clock-top">${waiting ? `<span class="badge orange">Not open yet</span>` : `<span class="badge green"><span class="dot"></span>Ready to clock in</span>`}</div>
+      <div class="clock-top">${closed ? `<span class="badge red">Clock-in closed</span>` : waiting ? `<span class="badge orange">Not open yet</span>` : `<span class="badge green"><span class="dot"></span>Ready to clock in</span>`}</div>
       <h3 class="clock-title">${escapeHtml(reservation.event.name)}</h3>
       ${line("Today's shift", timeText(reservation.startTime, reservation.endTime))}
       ${line("Location", reservation.location ? locPill(reservation.location) : "")}
@@ -1058,7 +1073,7 @@ function renderClockCard() {
       ${line("Clock-in opens", opensLine)}
       ${note}`;
     btn.textContent = "Clock In";
-    btn.disabled = waiting;
+    btn.disabled = waiting || closed;
     return;
   }
 
@@ -1085,7 +1100,7 @@ setInterval(() => {
   const t = document.getElementById("clockElapsed");
   if (t && openRecord && openRecord.timeIn) t.textContent = fmtDuration(Date.now() - openRecord.timeIn);
 }, 1000);
-setInterval(() => { if (currentUser && myProfile) { renderClockCard(); renderWeeklyReservations(); } }, 30000);
+setInterval(() => { if (currentUser && myProfile) { renderClockCard(); renderWeeklyReservations(); } }, 15000);
 
 
 document.getElementById("clockBtn").addEventListener("click", async () => {
@@ -1144,6 +1159,16 @@ document.getElementById("clockBtn").addEventListener("click", async () => {
       if (!reservation) { btn.disabled = false; return; }
       const ev = reservation.event;
       const now = new Date();
+
+      if (!myRecordsLoaded) {
+        errEl.textContent = "Still loading your records — please try again in a moment.";
+        return;
+      }
+      if (clockInClosed(reservation)) {
+        errEl.textContent = `Clock-in is closed for this shift (more than ${NO_SHOW_MINUTES} minutes past the start time). It will be recorded as a No Show.`;
+        checkNoShowReservations();
+        return;
+      }
 
       let late = false;
       if (reservation.startTime) {
