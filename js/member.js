@@ -926,13 +926,14 @@ function renderEventDetails() {
         ${CATEGORY_LABELS[ev.category] ? `<span class="badge orange">${escapeHtml(CATEGORY_LABELS[ev.category])}</span>` : ""}
         ${ev.pic ? `<span style="color:var(--muted);font-size:.8rem;">PIC: ${escapeHtml(ev.pic)}</span>` : ""}
       </div>
+      ${ev.compliance ? `<p style="margin:0 0 12px;color:var(--red);font-weight:700;font-size:.9rem;overflow-wrap:anywhere;">⚠ ${escapeHtml(ev.compliance)}</p>` : ""}
+      ${eventLocationList(ev).length ? `<div style="margin:0 0 12px -6px;line-height:1.9;"><span style="margin-left:6px;color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;">Location</span>${eventLocationList(ev).map(l => locPill(l)).join("")}</div>` : ""}
       ${tiles ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">${tiles}</div>` : ""}
       ${dates.length ? `
       <div style="border-top:1px solid var(--border);padding-top:12px;">
         <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:8px;">Schedule</div>
         <div style="font-size:.88rem;font-weight:600;line-height:1.7;">${formatEventDatesWithLocation(ev)}</div>
       </div>` : ((ev.location || "").trim() ? `<div style="border-top:1px solid var(--border);padding-top:12px;">${locPill(ev.location.trim())}</div>` : "")}
-      ${ev.compliance ? `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(217,51,46,.1);border:1px solid rgba(217,51,46,.35);color:var(--red);font-size:.85rem;">${escapeHtml(ev.compliance)}</div>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
