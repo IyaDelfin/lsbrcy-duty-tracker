@@ -908,17 +908,31 @@ function renderEventDetails() {
   }).join("");
 
 
+  const tile = (label, value, color) => `<div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
+      <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;">${label}</div>
+      <div style="font-size:.95rem;font-weight:700;margin-top:3px;${color ? `color:${color};` : ""}">${value}</div></div>`;
+  const tiles = [
+    ev.maxHours != null ? tile("Max shift", `${ev.maxHours} hr${ev.maxHours === 1 ? "" : "s"}`) : "",
+    ev.maxPerMember != null ? tile("Your reservations", `${myReservationCount} / ${ev.maxPerMember}`, atMemberLimit ? "var(--red)" : "") : "",
+    formatTimeWindows(ev) ? tile("Duty hours", formatTimeWindows(ev)) : ""
+  ].join("");
+
   el.innerHTML = `
     <hr class="section-divider">
     <div class="card event-detail-card" style="margin-top:10px;">
       <p class="eyebrow">Event Details</p>
-      <h3 style="margin-bottom:8px;">${escapeHtml(ev.name)}</h3>
-      <p class="muted" style="margin:0 0 6px;">${escapeHtml(CATEGORY_LABELS[ev.category] || "")} · ${escapeHtml(ev.location || "")}</p>
-      ${ev.pic ? `<p class="muted">PIC: ${escapeHtml(ev.pic)}</p>` : ""}
-      ${ev.maxHours != null ? `<p class="muted">Max hours for this event: ${ev.maxHours}</p>` : ""}
-      ${formatTimeWindows(ev) ? `<p class="muted">Duty hours: ${formatTimeWindows(ev)}</p>` : ""}
-      ${ev.maxPerMember != null ? `<p class="muted">Your reservations for this event: <strong style="color:${atMemberLimit ? 'var(--red)' : 'var(--text)'};">${myReservationCount} / ${ev.maxPerMember}</strong></p>` : ""}
-      ${ev.compliance ? `<p class="muted" style="color:var(--red);">${escapeHtml(ev.compliance)}</p>` : ""}
+      <h3 style="margin-bottom:8px;font-size:1.25rem;overflow-wrap:anywhere;">${escapeHtml(ev.name)}</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;">
+        ${CATEGORY_LABELS[ev.category] ? `<span class="badge orange">${escapeHtml(CATEGORY_LABELS[ev.category])}</span>` : ""}
+        ${ev.pic ? `<span style="color:var(--muted);font-size:.8rem;">PIC: ${escapeHtml(ev.pic)}</span>` : ""}
+      </div>
+      ${tiles ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">${tiles}</div>` : ""}
+      ${dates.length ? `
+      <div style="border-top:1px solid var(--border);padding-top:12px;">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:8px;">Schedule</div>
+        <div style="font-size:.88rem;font-weight:600;line-height:1.7;">${formatEventDatesWithLocation(ev)}</div>
+      </div>` : ((ev.location || "").trim() ? `<div style="border-top:1px solid var(--border);padding-top:12px;">${locPill(ev.location.trim())}</div>` : "")}
+      ${ev.compliance ? `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(217,51,46,.1);border:1px solid rgba(217,51,46,.35);color:var(--red);font-size:.85rem;">${escapeHtml(ev.compliance)}</div>` : ""}
     </div>
     ${dates.length ? `<h3 style="margin:16px 0 8px;">Dates</h3>${datesHtml}` : `<p class="muted">This event has no set dates.</p>`}`;
 
