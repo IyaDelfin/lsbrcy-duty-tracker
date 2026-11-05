@@ -43,6 +43,7 @@ let evStatusFilter = "active";
 let evCategoryFilter = "all";
 let editingEventId = null;
 let editingTimeWindows = [];
+let editingDateDescriptions = {}; // { "YYYY-MM-DD": "what the event is / who may join" } — per override date
 let editingDateOverrides = {}; // { "YYYY-MM-DD": [{start, end, location}, ...] } — per-date schedule overrides being edited
 let expandedRecordId = null;    // duty record row expanded to show full details in Member Detail
 let editingRecordId = null;     // duty record row currently being edited in Member Detail
@@ -272,6 +273,7 @@ const dates = eventDates(ev);
         <div class="row" style="align-items:center;">
           <div data-toggle-cat-date="${date}" style="cursor:pointer;">
             <strong style="${isExpanded ? 'color:var(--orange);' : ''}">${dateLabel}</strong>
+            ${((ev.dateDescriptions || {})[date]) ? `<div style="margin:4px 0 2px;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere;">${escapeHtml(ev.dateDescriptions[date])}</div>` : ""}
             ${hasTimeRange ? `<span class="muted" style="font-size:.7rem;margin-left:4px;">${isExpanded ? '▲ hide slots' : '▼ view slots'}</span>` : ''}
             <p class="muted" style="margin:2px 0 0;">${list.length}${ev.maxVolunteers != null && !hasTimeRange ? ' / ' + ev.maxVolunteers : ''} volunteered</p>
           </div>
@@ -335,6 +337,11 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
       .map(b => ({ start: b.start, end: b.end, location: (b.location || "").trim(), pic: (b.pic || "").trim() }));
     if (blocks.length) dateOverrides[date] = blocks;
   }
+  const dateDescriptions = {};
+  for (const d in dateOverrides) {
+    const t = (editingDateDescriptions[d] || "").trim();
+    if (t) dateDescriptions[d] = t;
+  }
   const pic = document.getElementById("evPic").value.trim();
   const compliance = document.getElementById("evCompliance").value.trim();
   const manualOnly = document.getElementById("evManualOnly").checked;
@@ -351,7 +358,7 @@ document.getElementById("addEventBtn").addEventListener("click", async () => {
     name, location, category, maxHours, maxVolunteers, maxPerMember,
     startDate: overridesOnly ? overrideDatesSorted[0] : startDate,
     endDate: overridesOnly ? overrideDatesSorted[overrideDatesSorted.length - 1] : endDate,
-    timeWindows, dateOverrides, overridesOnly, pic, compliance, manualOnly
+    timeWindows, dateOverrides, dateDescriptions, overridesOnly, pic, compliance, manualOnly
   };
 
   
@@ -375,6 +382,7 @@ document.getElementById("evManualOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
   editingDateOverrides = {};
+  editingDateDescriptions = {};
   renderDateOverrides();
 });
 
@@ -388,6 +396,7 @@ document.getElementById("evManualOnly").checked = false;
   editingTimeWindows = [];
   renderTimeWindowRows();
   editingDateOverrides = {};
+  editingDateDescriptions = {};
   renderDateOverrides();
 });
 
@@ -420,6 +429,7 @@ function startEditEvent(ev) {
     : (ev.dutyStart && ev.dutyEnd ? [{ start: ev.dutyStart, end: ev.dutyEnd }] : []);
   renderTimeWindowRows();
   editingDateOverrides = ev.dateOverrides ? JSON.parse(JSON.stringify(ev.dateOverrides)) : {};
+  editingDateDescriptions = ev.dateDescriptions ? { ...ev.dateDescriptions } : {};
   renderDateOverrides();
   document.getElementById("evPic").value = ev.pic || "";
 
@@ -474,6 +484,7 @@ function renderDateOverrides() {
           <strong>${dateLabel}</strong>
           <button type="button" class="danger" data-remove-override-date="${date}" style="padding:4px 10px;font-size:.75rem;width:auto;">Remove Date</button>
         </div>
+        <textarea data-override-desc="${date}" rows="2" maxlength="300" placeholder="Description (optional) — e.g. what this event is, who can join / qualifications" style="position:static;float:none;display:block;box-sizing:border-box;width:100%;min-height:54px;margin:8px 0 2px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.88rem;resize:vertical;">${escapeHtml(editingDateDescriptions[date] || "")}</textarea>
         ${blocks.map((b, i) => `
           <div class="row" style="margin-top:6px;">
             <input type="time" data-override-start="${date}|${i}" value="${b.start || ""}">
@@ -486,6 +497,9 @@ function renderDateOverrides() {
       </div>`;
   }).join("") || `<p class="muted" style="font-size:.8rem;">No per-date overrides yet.</p>`;
 
+  el.querySelectorAll("[data-override-desc]").forEach(input => input.addEventListener("input", () => {
+    editingDateDescriptions[input.dataset.overrideDesc] = input.value;
+  }));
   el.querySelectorAll("[data-override-start]").forEach(input => input.addEventListener("input", () => {
     const [date, i] = input.dataset.overrideStart.split("|");
     editingDateOverrides[date][+i].start = input.value;
@@ -513,6 +527,7 @@ function renderDateOverrides() {
   }));
   el.querySelectorAll("[data-remove-override-date]").forEach(btn => btn.addEventListener("click", () => {
     delete editingDateOverrides[btn.dataset.removeOverrideDate];
+    delete editingDateDescriptions[btn.dataset.removeOverrideDate];
     renderDateOverrides();
   }));
 }
@@ -698,24 +713,27 @@ function locationsForDate(ev, date) {
 // HTML lines of "Mon, Oct 19 – Wed, Oct 21  📍 Location". Consecutive dates that
 // share the same location are merged into one range; a different location on
 // an overridden date gets its own line.
-function formatEventDatesWithLocation(ev) {
+function formatEventDatesWithLocation(ev, withDesc) {
   const fmt = d => new Date(d + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
   const nextDay = d => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + 1); return localDateStr(x); };
   const pill = loc => loc ? `<span style="display:inline-block;background:rgba(217,51,46,.15);color:var(--red);padding:1px 8px;border-radius:6px;font-size:.78rem;font-weight:700;margin-left:6px;">📍 ${escapeHtml(loc)}</span>` : "";
+  const descOf = d => withDesc ? (((ev.dateDescriptions || {})[d]) || "").trim() : "";
 
   const dates = eventDates(ev);
   if (!dates.length) return pill((ev.location || "").trim());
 
   const groups = [];
   dates.forEach(d => {
-    const key = locationsForDate(ev, d).join(" / ");
+    const loc = locationsForDate(ev, d).join(" / ");
+    const desc = descOf(d);
     const last = groups[groups.length - 1];
-    if (last && last.key === key && nextDay(last.end) === d) last.end = d;
-    else groups.push({ start: d, end: d, key });
+    if (last && last.loc === loc && last.desc === desc && nextDay(last.end) === d) last.end = d;
+    else groups.push({ start: d, end: d, loc, desc });
   });
   return groups.map(g => {
     const label = g.start === g.end ? fmt(g.start) : `${fmt(g.start)} – ${fmt(g.end)}`;
-    return `<div style="margin-bottom:4px;">${escapeHtml(label)}${pill(g.key)}</div>`;
+    return `<div style="margin-bottom:${g.desc ? 0 : 4}px;">${escapeHtml(label)}${pill(g.loc)}</div>` +
+      (g.desc ? `<div style="color:var(--muted);font-size:.78rem;font-weight:400;margin:2px 0 8px;overflow-wrap:anywhere;">${escapeHtml(g.desc)}</div>` : "");
   }).join("");
 }
 
@@ -735,7 +753,7 @@ function renderEvents() {
 
   const cardHtml = (ev) => {
     const isOpen = attendanceOpenFor === ev.id;
-    const datesHtml = formatEventDatesWithLocation(ev);
+    const datesHtml = formatEventDatesWithLocation(ev, true);
     const windowsText = formatTimeWindows(ev);
     return `
     <div class="card" style="padding:18px 20px;${isOpen ? "border-color:var(--red);" : ""}">
@@ -1536,6 +1554,13 @@ function addEventReservationsSheet(workbook, ev) {
     dateRow.font = { bold: true, size: 12 };
     sheet.mergeCells(dateRow.number, 1, dateRow.number, headers.length);
 
+    const dayDesc = ((ev.dateDescriptions || {})[date] || "").trim();
+    if (dayDesc) {
+      const descRow = sheet.addRow([`Description: ${dayDesc}`]);
+      descRow.font = { italic: true };
+      sheet.mergeCells(descRow.number, 1, descRow.number, headers.length);
+    }
+
     const headerRow = sheet.addRow(headers);
     headerRow.font = { bold: true };
     headerRow.eachCell(c => { c.border = { bottom: { style: "thin" } }; });
@@ -1581,9 +1606,11 @@ async function exportAllActiveEventsToExcel() {
   const active = allEvents
     .filter(e => e.status === "active")
     .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
-  if (!active.length) { alert("No active events to export."); return; }
+  // Events with 0 reservations don't get a tab.
+  const withReservations = active.filter(ev => volunteerCount(ev) > 0);
+  if (!withReservations.length) { alert("No active events with reservations to export."); return; }
   const workbook = new ExcelJS.Workbook();
-  active.forEach(ev => addEventReservationsSheet(workbook, ev));
+  withReservations.forEach(ev => addEventReservationsSheet(workbook, ev));
   await downloadWorkbook(workbook, `LSBRCY-Event-Reservations-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
